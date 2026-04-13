@@ -1,0 +1,42 @@
+rules:
+  - id: spectral_tilt_bright
+    condition: "master.spectral_tilt > 0.7"
+    action:
+      eq_band: { band: "high_shelf", freq: 10000, gain_db: -2.5, q: null }
+    reason_template: "spectral_tilt={value} — bright mix, high shelf cut"
+
+  - id: spectral_tilt_dark
+    condition: "master.spectral_tilt < 0.4"
+    action:
+      eq_band: { band: "high_shelf", freq: 8000, gain_db: 1.5, q: null }
+    reason_template: "spectral_tilt={value} — dark mix, high shelf boost"
+
+  - id: kick_fundamental_boost
+    condition: "stems.drums.kick_fundamental_hz is not null"
+    action:
+      eq_band: { band: "low_peak", freq: null, gain_db: 2.0, q: 1.2 }
+    reason_template: "kick fundamental at {value}Hz"
+
+  - id: heavy_compression_skip
+    condition: "master.dynamic_range_db < 5"
+    action:
+      compression: null
+    reason_template: "DR={value}dB — already heavily compressed, skip bus compression"
+
+  - id: moderate_compression
+    condition: "master.dynamic_range_db >= 5 and master.dynamic_range_db <= 10"
+    action:
+      compression: { ratio: "4:1", attack_ms: 10, release_ms: 80 }
+    reason_template: "DR={value}dB — moderate compression applied"
+
+  - id: loud_master
+    condition: "master.lufs > -10"
+    action:
+      master_gain_db: 0
+    reason_template: "LUFS={value} — already at streaming loudness target"
+
+  - id: quiet_master
+    condition: "master.lufs < -14"
+    action:
+      master_gain_db: 3
+    reason_template: "LUFS={value} — below streaming target, gain applied"
