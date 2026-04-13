@@ -40,4 +40,15 @@ langchain_cache/
 # OS
 .DS_Store
 Thumbs.db
-CLAUDE.md
+
+# IDE / editor
+*.code-workspace
+
+# Claude Code local settings
+.claude/
+
+# Logs
+update.log
+
+# Markdown docs
+*.md

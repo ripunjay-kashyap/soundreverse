@@ -1,0 +1,71 @@
+{
+  "track_id": "clocks_coldplay",
+  "metadata": {
+    "title": "Clocks",
+    "artist": "Coldplay",
+    "album": "A Rush of Blood to the Head",
+    "year": 2002,
+    "genre": "Alternative Rock / Psychedelic Rock",
+    "generated_at": "2026-04-13",
+    "model": "htdemucs",
+    "model_version": "4.0.0",
+    "sample_rate_hz": 44100,
+    "duration_seconds": 307.0,
+    "source": "cache"
+  },
+  "stems": {
+    "drums": {
+      "lufs": -19.2,
+      "peak_db": -5.0,
+      "dynamic_range_db": 13.8,
+      "spectral_tilt": 0.48,
+      "stereo_correlation": 0.88,
+      "kick_fundamental_hz": 55.0,
+      "snare_fundamental_hz": 195.0,
+      "transient_sharpness": 0.78
+    },
+    "bass": {
+      "lufs": -22.1,
+      "peak_db": -7.5,
+      "dynamic_range_db": 9.2,
+      "spectral_tilt": 0.38,
+      "stereo_correlation": 0.98,
+      "fundamental_hz": 38.0
+    },
+    "vocals": {
+      "lufs": -16.5,
+      "peak_db": -4.0,
+      "dynamic_range_db": 11.5,
+      "spectral_tilt": 0.52,
+      "stereo_correlation": 0.68,
+      "fundamental_hz": 165.0,
+      "presence_peak_hz": 2800.0
+    },
+    "other": {
+      "lufs": -15.8,
+      "peak_db": -3.2,
+      "dynamic_range_db": 10.5,
+      "spectral_tilt": 0.72,
+      "stereo_correlation": 0.75
+    }
+  },
+  "master": {
+    "lufs": -11.0,
+    "peak_db": -0.4,
+    "true_peak_dbtp": -0.3,
+    "dynamic_range_db": 8.2,
+    "spectral_tilt": 0.55,
+    "stereo_correlation": 0.76,
+    "stereo_width": 0.65,
+    "low_energy_ratio": 0.32,
+    "mid_energy_ratio": 0.43,
+    "high_energy_ratio": 0.25
+  },
+  "rhythm": {
+    "bpm": 131.0,
+    "bpm_confidence": 0.96,
+    "key": "Eb Mixolydian",
+    "key_confidence": 0.88,
+    "time_signature": "4/4"
+  }
+}

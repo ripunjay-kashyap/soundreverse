@@ -1,0 +1,71 @@
+{
+  "track_id": "blinding_lights_weeknd",
+  "metadata": {
+    "title": "Blinding Lights",
+    "artist": "The Weeknd",
+    "album": "After Hours",
+    "year": 2019,
+    "genre": "Synth-pop / Synthwave",
+    "generated_at": "2026-04-13",
+    "model": "htdemucs",
+    "model_version": "4.0.0",
+    "sample_rate_hz": 44100,
+    "duration_seconds": 202.0,
+    "source": "cache"
+  },
+  "stems": {
+    "drums": {
+      "lufs": -14.5,
+      "peak_db": -3.0,
+      "dynamic_range_db": 8.5,
+      "spectral_tilt": 0.47,
+      "stereo_correlation": 0.89,
+      "kick_fundamental_hz": 65.0,
+      "snare_fundamental_hz": 240.0,
+      "transient_sharpness": 0.89
+    },
+    "bass": {
+      "lufs": -16.8,
+      "peak_db": -4.2,
+      "dynamic_range_db": 7.8,
+      "spectral_tilt": 0.58,
+      "stereo_correlation": 0.96,
+      "fundamental_hz": 45.0
+    },
+    "vocals": {
+      "lufs": -13.2,
+      "peak_db": -2.0,
+      "dynamic_range_db": 9.5,
+      "spectral_tilt": 0.62,
+      "stereo_correlation": 0.74,
+      "fundamental_hz": 178.0,
+      "presence_peak_hz": 3100.0
+    },
+    "other": {
+      "lufs": -11.8,
+      "peak_db": -2.5,
+      "dynamic_range_db": 7.5,
+      "spectral_tilt": 0.72,
+      "stereo_correlation": 0.55
+    }
+  },
+  "master": {
+    "lufs": -7.2,
+    "peak_db": -0.2,
+    "true_peak_dbtp": -0.1,
+    "dynamic_range_db": 4.8,
+    "spectral_tilt": 0.65,
+    "stereo_correlation": 0.71,
+    "stereo_width": 0.60,
+    "low_energy_ratio": 0.28,
+    "mid_energy_ratio": 0.42,
+    "high_energy_ratio": 0.30
+  },
+  "rhythm": {
+    "bpm": 171.0,
+    "bpm_confidence": 0.98,
+    "key": "F Minor",
+    "key_confidence": 0.94,
+    "time_signature": "4/4"
+  }
+}

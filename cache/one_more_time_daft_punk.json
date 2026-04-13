@@ -1,0 +1,71 @@
+{
+  "track_id": "one_more_time_daft_punk",
+  "metadata": {
+    "title": "One More Time",
+    "artist": "Daft Punk",
+    "album": "Discovery",
+    "year": 2000,
+    "genre": "French House / Synth-Pop",
+    "generated_at": "2026-04-13",
+    "model": "htdemucs",
+    "model_version": "4.0.0",
+    "sample_rate_hz": 44100,
+    "duration_seconds": 320.0,
+    "source": "cache"
+  },
+  "stems": {
+    "drums": {
+      "lufs": -16.8,
+      "peak_db": -3.5,
+      "dynamic_range_db": 14.5,
+      "spectral_tilt": 0.45,
+      "stereo_correlation": 0.92,
+      "kick_fundamental_hz": 62.0,
+      "snare_fundamental_hz": 210.0,
+      "transient_sharpness": 0.91
+    },
+    "bass": {
+      "lufs": -18.4,
+      "peak_db": -4.5,
+      "dynamic_range_db": 8.5,
+      "spectral_tilt": 0.68,
+      "stereo_correlation": 0.99,
+      "fundamental_hz": 41.2
+    },
+    "vocals": {
+      "lufs": -14.2,
+      "peak_db": -2.5,
+      "dynamic_range_db": 7.5,
+      "spectral_tilt": 0.62,
+      "stereo_correlation": 0.71,
+      "fundamental_hz": 185.0,
+      "presence_peak_hz": 3400.0
+    },
+    "other": {
+      "lufs": -12.5,
+      "peak_db": -2.0,
+      "dynamic_range_db": 12.0,
+      "spectral_tilt": 0.65,
+      "stereo_correlation": 0.62
+    }
+  },
+  "master": {
+    "lufs": -8.4,
+    "peak_db": -0.1,
+    "true_peak_dbtp": -0.05,
+    "dynamic_range_db": 5.8,
+    "spectral_tilt": 0.68,
+    "stereo_correlation": 0.72,
+    "stereo_width": 0.54,
+    "low_energy_ratio": 0.36,
+    "mid_energy_ratio": 0.39,
+    "high_energy_ratio": 0.25
+  },
+  "rhythm": {
+    "bpm": 123.45,
+    "bpm_confidence": 0.98,
+    "key": "G Major",
+    "key_confidence": 0.82,
+    "time_signature": "4/4"
+  }
+}

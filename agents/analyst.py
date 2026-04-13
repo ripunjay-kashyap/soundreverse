@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
-from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from agents.graph import GraphState
 
 RULES_PATH = Path(__file__).parent.parent / "rules" / "rules.yaml"
-MODEL = "claude-sonnet-4-20250514"
+MODEL = "gemini-flash-lite-latest"
 
 
 # ── Tool schema the LLM must call to return reasons ─────────────────────────
@@ -113,7 +113,7 @@ def _refine_reasons(
     sig: SignalSignature,
     draft: dict[str, Any],
     critique: str,
-    llm: ChatAnthropic,
+    llm: ChatGoogleGenerativeAI,
 ) -> ReasonBundle:
     eq_summaries = "\n".join(
         f"  - {b['band']} @ {b['freq']}Hz, gain={b['gain_db']}dB — template: {b['reason']}"
@@ -165,7 +165,7 @@ def analyst_node(state: "GraphState") -> "GraphState":
 
     draft = _apply_rules(sig, rules)
 
-    llm = ChatAnthropic(model=MODEL, temperature=0)
+    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
     bundle = _refine_reasons(sig, draft, critique, llm)
 
     # Build EQBand objects with LLM-refined reasons
