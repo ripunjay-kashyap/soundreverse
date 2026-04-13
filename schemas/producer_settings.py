@@ -19,6 +19,8 @@ class Compression(BaseModel):
 class ProducerSettings(BaseModel):
     eq: list[EQBand]
     compression: Compression | None
+    compression_skip_reason: str | None = None
     master_gain_db: float
+    master_gain_reason: str | None = None
     confidence: float | None = None
     iteration_count: int = 0

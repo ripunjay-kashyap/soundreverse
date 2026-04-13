@@ -31,6 +31,7 @@ class GraphState(TypedDict):
     iteration_count:   int
     confidence:        float
     critique:          str
+    critique_history:  list[str]
     final:             bool
     error:             str | None
     trace_url:         str | None
@@ -89,6 +90,7 @@ def run(track_id: str) -> dict:
         "iteration_count": 0,
         "confidence": 0.0,
         "critique": "",
+        "critique_history": [],
         "final": False,
         "error": None,
         "trace_url": None,

@@ -6,7 +6,7 @@ from schemas.signal_signature import SignalSignature
 if TYPE_CHECKING:
     from agents.graph import GraphState
 
-CONFIDENCE_THRESHOLD = 0.75
+CONFIDENCE_THRESHOLD = 0.8
 MAX_ITERATIONS = 3
 
 
@@ -78,25 +78,31 @@ def critic_node(state: "GraphState") -> "GraphState":
 
     settings = settings.model_copy(update={"confidence": confidence, "iteration_count": iteration_count})
 
+    critique = "; ".join(failures)
+    history = state.get("critique_history", []) + ([critique] if critique else [])
+
     if confidence >= CONFIDENCE_THRESHOLD or iteration_count >= MAX_ITERATIONS:
         critique_note = ""
         if iteration_count >= MAX_ITERATIONS and confidence < CONFIDENCE_THRESHOLD:
             critique_note = f" (max iterations reached, signing off with confidence={confidence})"
+        
+        final_critique = critique + critique_note
         return {
             **state,
             "producer_settings": settings,
             "confidence": confidence,
             "iteration_count": iteration_count,
-            "critique": "; ".join(failures) + critique_note,
+            "critique": final_critique,
+            "critique_history": history,
             "final": True,
         }
 
-    critique = "; ".join(failures)
     return {
         **state,
         "producer_settings": settings,
         "confidence": confidence,
         "iteration_count": iteration_count,
         "critique": critique,
+        "critique_history": history,
         "final": False,
     }

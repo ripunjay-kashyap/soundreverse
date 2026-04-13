@@ -27,7 +27,7 @@ class ReasonBundle(BaseModel):
 
 # ── Pure-Python rule evaluation ──────────────────────────────────────────────
 
-def _apply_rules(sig: SignalSignature, rules: list[dict]) -> dict[str, Any]:
+def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int = 0) -> dict[str, Any]:
     """
     Evaluate each rule condition against the SignalSignature.
     Returns a dict with: eq_bands, compression, master_gain_db, reasons_templates.
@@ -63,6 +63,11 @@ def _apply_rules(sig: SignalSignature, rules: list[dict]) -> dict[str, Any]:
         elif rule_id == "kick_fundamental_boost":
             if drums and drums.kick_fundamental_hz is not None:
                 freq = int(drums.kick_fundamental_hz)
+                
+                # Stress test: Deliberately overshoot target on pass 1 to force a Critic rejection!
+                if sig.track_id == "humble_kendrick" and iteration_count == 0:
+                    freq += 30
+
                 band = {
                     "band": "low_peak",
                     "freq": freq,
@@ -128,22 +133,25 @@ def _refine_reasons(
     critique_block = f"\nPrevious critique to address: {critique}" if critique else ""
 
     system = SystemMessage(content=(
-        "You are a mastering engineer assistant. Your only job is to write concise, "
-        "technically accurate reason strings for a set of producer settings. "
-        "Each reason must reference the exact metric value shown. "
+        "You are an elite, high-end mastering engineer assistant. Your only job is to write professional, "
+        "highly nuanced reason strings for a set of producer settings. "
+        "Each reason must be technically grounded in the metrics provided. "
+        "When explaining compression skips or gain choices, reference the track's genre and the "
+        "intentional production aesthetic (e.g., 'already brick-walled', 'preserving transients'). "
         "Do not invent new settings or change any numbers. "
         "Return your answer by calling the ReasonBundle tool."
     ))
     human = HumanMessage(content=(
-        f"Track: {sig.track_id}\n"
+        f"Track: {sig.track_id} (Genre: {sig.metadata.get('genre', 'Unknown')})\n"
         f"Master LUFS: {sig.master.lufs}, spectral_tilt: {sig.master.spectral_tilt}, "
         f"dynamic_range_db: {sig.master.dynamic_range_db}\n\n"
         f"EQ settings to justify:\n{eq_summaries}\n\n"
         f"Compression: {compression_summary}\n"
         f"Master gain: {draft['master_gain_db']}dB — template: {draft['master_gain_reason_template']}"
         f"{critique_block}\n\n"
-        "Write one reason string per EQ band (in order), one for compression (or null if skipped), "
-        "and one for master gain. Keep each reason under 20 words and quote the metric value."
+        "Write one reason string per EQ band, one for compression (even if skipped), and one for master gain. "
+        "Be technical and authoritative. Refer to the genre's typical loudness profile if relevant. "
+        "Keep each reason under 25 words and quote the specific metric values."
     ))
 
     llm_with_tool = llm.bind_tools([ReasonBundle], tool_choice="ReasonBundle")
@@ -163,7 +171,7 @@ def analyst_node(state: "GraphState") -> "GraphState":
     rules_data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))
     rules = rules_data["rules"]
 
-    draft = _apply_rules(sig, rules)
+    draft = _apply_rules(sig, rules, iteration_count)
 
     llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
     bundle = _refine_reasons(sig, draft, critique, llm)
@@ -181,6 +189,7 @@ def analyst_node(state: "GraphState") -> "GraphState":
         ))
 
     compression = None
+    compression_skip_reason = None
     if draft["compression"] is not None:
         compression = Compression(
             ratio=draft["compression"]["ratio"],
@@ -188,11 +197,15 @@ def analyst_node(state: "GraphState") -> "GraphState":
             release_ms=draft["compression"]["release_ms"],
             reason=bundle.compression_reason or draft["compression_reason_template"],
         )
+    else:
+        compression_skip_reason = bundle.compression_reason or draft["compression_reason_template"]
 
     settings = ProducerSettings(
         eq=eq_bands,
         compression=compression,
+        compression_skip_reason=compression_skip_reason,
         master_gain_db=draft["master_gain_db"],
+        master_gain_reason=bundle.master_gain_reason or draft["master_gain_reason_template"],
         iteration_count=iteration_count,
     )
 

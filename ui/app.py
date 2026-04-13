@@ -16,7 +16,7 @@ TRACKS: dict[str, str] = {
     "Billie Jean — Michael Jackson":  "billie_jean_mj",
     "One More Time — Daft Punk":      "one_more_time_daft_punk",
     "Clocks — Coldplay":              "clocks_coldplay",
-    "HUMBLE. — Kendrick Lamar":       "humble_kendrick",
+    "HUMBLE. — Kendrick Lamar [Stress test (forces 2 iterations)]": "humble_kendrick",
     "Blinding Lights — The Weeknd":   "blinding_lights_weeknd",
 }
 
@@ -37,6 +37,7 @@ def analyze(display_name: str):
             None,
             None,
             gr.update(visible=False),
+            gr.update(visible=False),
         )
 
     if final_state.get("error"):
@@ -45,6 +46,7 @@ def analyze(display_name: str):
             "—",
             None,
             None,
+            gr.update(visible=False),
             gr.update(visible=False),
         )
 
@@ -60,12 +62,21 @@ def analyze(display_name: str):
         else gr.update(visible=False)
     )
 
-    return confidence, iterations, pdf_path, json_path, trace_update
+    summary_ui = gr.update(visible=False)
+    sig = final_state.get("signal_signature")
+    if sig:
+        lufs = sig.master.lufs
+        bpm  = sig.rhythm.bpm
+        key  = sig.rhythm.key
+        summary_text = f"**{display_name.split(' [')[0]}**  \n`{lufs} LUFS`  |  `{bpm} BPM`  |  `Key: {key}`"
+        summary_ui = gr.update(value=summary_text, visible=True)
+
+    return confidence, iterations, pdf_path, json_path, trace_update, summary_ui
 
 
 # ── UI layout ────────────────────────────────────────────────────────────────
 
-with gr.Blocks(title="SoundReverse", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="SoundReverse") as demo:
     gr.Markdown("# SoundReverse\n### Producer Session Pack Generator")
 
     with gr.Row():
@@ -79,6 +90,7 @@ with gr.Blocks(title="SoundReverse", theme=gr.themes.Soft()) as demo:
             analyze_btn = gr.Button("Analyze", variant="primary")
 
         with gr.Column(scale=1):
+            inline_summary  = gr.Markdown(visible=False)
             confidence_out  = gr.Textbox(label="Confidence Score", interactive=False)
             iterations_out  = gr.Textbox(label="Iterations",       interactive=False)
             pdf_out         = gr.File(label="Blueprint PDF",  interactive=False)
@@ -88,9 +100,9 @@ with gr.Blocks(title="SoundReverse", theme=gr.themes.Soft()) as demo:
     analyze_btn.click(
         fn=analyze,
         inputs=[track_dropdown],
-        outputs=[confidence_out, iterations_out, pdf_out, json_out, trace_link],
+        outputs=[confidence_out, iterations_out, pdf_out, json_out, trace_link, inline_summary],
     )
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft())

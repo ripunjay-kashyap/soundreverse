@@ -102,6 +102,23 @@ class BlueprintPDF(FPDF):
         self.set_text_color(*PRIMARY)
         self.ln(1)
 
+    # -- Signal summary table (reusable) --------------------------------------
+    def signal_summary_table(self, sig: "SignalSignature"):
+        self.section_title("Signal Summary & Grounding Metrics")
+        m = sig.master
+        drums = sig.stems.get("drums")
+        kick_hz = f"{drums.kick_fundamental_hz} Hz" if (drums and drums.kick_fundamental_hz) else "-"
+
+        summary_pairs = [
+            ("Loudness (LUFS)", str(m.lufs)),
+            ("Dynamic Range",   f"{m.dynamic_range_db} dB"),
+            ("Spectral Tilt",   str(m.spectral_tilt)),
+            ("Stereo Width",    str(m.stereo_width)),
+            ("Kick Fundamental", kick_hz),
+        ]
+        for i, (k, v) in enumerate(summary_pairs):
+            self.kv_row(k, v, shade=(i % 2 == 0))
+
 
 # ── Page builders ────────────────────────────────────────────────────────────
 
@@ -124,26 +141,25 @@ def _page1_overview(pdf: BlueprintPDF, state: "GraphState"):
         ("BPM",           f"{sig.rhythm.bpm}  ({sig.rhythm.time_signature})"),
         ("Key",           sig.rhythm.key),
         ("Duration",      f"{meta.get('duration_seconds', '-')}s"),
-        ("Master LUFS",   str(sig.master.lufs)),
-        ("Dynamic Range", f"{sig.master.dynamic_range_db} dB"),
-        ("Spectral Tilt", str(sig.master.spectral_tilt)),
     ]
     for i, (k, v) in enumerate(pairs):
         pdf.kv_row(k, v, shade=(i % 2 == 0))
     pdf.ln(4)
 
+    pdf.signal_summary_table(sig)
+    pdf.ln(4)
+
     # EQ table
     pdf.section_title("EQ Settings")
-    cols = [("Band", 35), ("Freq (Hz)", 30), ("Gain (dB)", 30), ("Q", 20), ("Reason", 67)]
+    cols = [("Band", 45), ("Freq (Hz)", 45), ("Gain (dB)", 45), ("Q", 47)]
     pdf.table_header(cols)
     for i, band in enumerate(settings.eq):
         q_str = str(band.q) if band.q is not None else "-"
         row = [
-            (band.band,          35),
-            (str(band.freq),     30),
-            (f"{band.gain_db:+.1f}", 30),
-            (q_str,              20),
-            (band.reason[:55],   67),
+            (band.band,          45),
+            (str(band.freq),     45),
+            (f"{band.gain_db:+.1f}", 45),
+            (q_str,              47),
         ]
         pdf.table_row(row, shade=(i % 2 == 0))
     pdf.ln(4)
@@ -175,10 +191,16 @@ def _page1_overview(pdf: BlueprintPDF, state: "GraphState"):
 def _page2_reasoning(pdf: BlueprintPDF, state: "GraphState"):
     """Page 2 - Agent reasoning trace."""
     pdf.add_page()
+
+    sig      = state["signal_signature"]
+    settings = state["producer_settings"]
+
+    # -- Signal Summary -------------------------------------------------------
+    pdf.signal_summary_table(sig)
+    pdf.ln(6)
+
     pdf.section_title("Agent Reasoning - Why Each Setting Was Chosen")
     pdf.ln(2)
-
-    settings = state["producer_settings"]
 
     for i, band in enumerate(settings.eq):
         label = f"EQ · {band.band} @ {band.freq} Hz  ({band.gain_db:+.1f} dB)"
@@ -188,11 +210,12 @@ def _page2_reasoning(pdf: BlueprintPDF, state: "GraphState"):
         label = f"Compression · {settings.compression.ratio}  attack={settings.compression.attack_ms}ms  release={settings.compression.release_ms}ms"
         pdf.reason_block(label, settings.compression.reason, shade=(len(settings.eq) % 2 == 0))
     else:
-        pdf.reason_block("Compression · skipped", "Bus compression not applied.", shade=(len(settings.eq) % 2 == 0))
+        reason = settings.compression_skip_reason or "Bus compression not applied."
+        pdf.reason_block("Compression · skipped", reason, shade=(len(settings.eq) % 2 == 0))
 
     pdf.reason_block(
         f"Master Gain · {settings.master_gain_db:+.1f} dB",
-        f"Master LUFS = {state['signal_signature'].master.lufs}",
+        settings.master_gain_reason or f"Master LUFS = {sig.master.lufs}",
         shade=((len(settings.eq) + 1) % 2 == 0),
     )
 
@@ -214,7 +237,7 @@ def _page3_critic_log(pdf: BlueprintPDF, state: "GraphState"):
 
     iteration_count = state["iteration_count"]
     confidence      = state["confidence"]
-    critique        = state.get("critique", "")
+    history         = state.get("critique_history", [])
 
     pdf.set_font("Helvetica", "", 9)
     pdf.kv_row("Total iterations", str(iteration_count))
@@ -236,21 +259,36 @@ def _page3_critic_log(pdf: BlueprintPDF, state: "GraphState"):
 
     pdf.ln(4)
 
-    if critique:
-        pdf.section_title("Flagged Issues")
-        for i, issue in enumerate(critique.split(";")):
-            issue = issue.strip()
-            if issue:
-                pdf.set_fill_color(*LIGHT_BG if i % 2 == 0 else WHITE)
-                pdf.set_font("Helvetica", "", 8)
-                pdf.set_text_color(*RED_SOFT)
-                pdf.multi_cell(182, 5, f"• {issue}", fill=True)
-                pdf.set_text_color(*PRIMARY)
-        pdf.ln(2)
+    if history:
+        pdf.section_title("Critic Debate History")
+        for round_idx, round_critique in enumerate(history):
+            # Header for the round
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*MID_GREY)
+            pdf.cell(0, 6, f" ROUND {round_idx + 1} REJECTIONS", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_text_color(*PRIMARY)
+            
+            # List issues in this round
+            for i, issue in enumerate(round_critique.split(";")):
+                issue = issue.strip()
+                if issue:
+                    pdf.set_fill_color(*LIGHT_BG if i % 2 == 0 else WHITE)
+                    pdf.set_font("Helvetica", "", 8)
+                    pdf.set_text_color(*RED_SOFT)
+                    pdf.multi_cell(180, 6, f"- {issue}", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.set_text_color(*PRIMARY)
+            pdf.ln(2)
+        
+        # If we finished with high confidence, add a success note
+        if confidence >= 0.8:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(*MID_GREY)
+            pdf.cell(0, 6, "  Final pass resulted in target confidence - all issues resolved.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_text_color(*PRIMARY)
     else:
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(*MID_GREY)
-        pdf.cell(0, 6, "  No issues flagged - all validation checks passed.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 6, "  No issues flagged - all validation checks passed on first attempt.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_text_color(*PRIMARY)
 
     pdf.ln(4)
@@ -264,7 +302,8 @@ def _page3_critic_log(pdf: BlueprintPDF, state: "GraphState"):
     for i, check in enumerate(checks):
         pdf.set_fill_color(*LIGHT_BG if i % 2 == 0 else WHITE)
         pdf.set_font("Helvetica", "", 8)
-        pdf.multi_cell(182, 5, f"  [OK]  {check}", fill=True)
+        # Use a slightly narrower width (178 instead of 182) and larger height to ensure wrapping works cleanly
+        pdf.multi_cell(180, 6, f"  [OK]  {check}", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 
 # ── Output node ──────────────────────────────────────────────────────────────

@@ -50,5 +50,9 @@ Thumbs.db
 # Logs
 update.log
 
+# Project Cache
+cache/
+
 # Markdown docs
 *.md
+!README.md
