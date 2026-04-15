@@ -5,6 +5,8 @@ import yaml
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google.genai.errors import ServerError, ClientError
 
 from schemas.producer_settings import Compression, EQBand, ProducerSettings
 from schemas.signal_signature import SignalSignature
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
     from agents.graph import GraphState
 
 RULES_PATH = Path(__file__).parent.parent / "rules" / "rules.yaml"
-MODEL = "gemini-flash-lite-latest"
+MODEL = "gemini-2.5-flash-lite"
 
 
 # ── Tool schema the LLM must call to return reasons ─────────────────────────
@@ -112,6 +114,18 @@ def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int =
     }
 
 
+# ── Retry wrapper for transient Gemini errors ────────────────────────────────
+
+@retry(
+    retry=retry_if_exception_type(ServerError),  # only retry 5xx, not 4xx (quota/auth errors)
+    wait=wait_exponential(multiplier=3, min=5, max=60),
+    stop=stop_after_attempt(2),
+    reraise=True,
+)
+def _invoke_with_retry(llm_with_tool, messages):
+    return llm_with_tool.invoke(messages)
+
+
 # ── LLM call: refine reason strings only ────────────────────────────────────
 
 def _refine_reasons(
@@ -155,7 +169,7 @@ def _refine_reasons(
     ))
 
     llm_with_tool = llm.bind_tools([ReasonBundle], tool_choice="ReasonBundle")
-    response = llm_with_tool.invoke([system, human])
+    response = _invoke_with_retry(llm_with_tool, [system, human])
 
     tool_call = response.tool_calls[0]
     return ReasonBundle.model_validate(tool_call["args"])

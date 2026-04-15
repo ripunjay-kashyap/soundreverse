@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import gradio as gr
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 from agents.graph import run
 
@@ -31,8 +31,15 @@ def analyze(display_name: str):
     try:
         final_state = run(track_id)
     except Exception as exc:
+        error_str = str(exc)
+        if "503" in error_str or "UNAVAILABLE" in error_str:
+            msg = "Gemini model is temporarily overloaded (503). Retries exhausted — please try again in a minute."
+        elif "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+            msg = "Gemini API rate limit hit (429). Please wait a moment and try again."
+        else:
+            msg = f"Error: {error_str}"
         return (
-            f"Error: {exc}",
+            msg,
             "—",
             None,
             None,

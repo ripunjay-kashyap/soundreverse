@@ -28,6 +28,10 @@ env/
 output/*.json
 output/*.pdf
 
+# Loose test/scratch files at root
+*.pdf
+format.json
+
 # pytest
 .pytest_cache/
 .coverage
@@ -49,6 +53,19 @@ Thumbs.db
 
 # Logs
 update.log
+*.log
+
+# React / Node (frontend — for upcoming migration)
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+.npm/
+
+# FastAPI / uvicorn
+*.pid
 
 # Project Cache
 cache/

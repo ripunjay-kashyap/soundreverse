@@ -19,7 +19,7 @@ from schemas.producer_settings import ProducerSettings
 from schemas.signal_signature import SignalSignature
 from schemas.track_request import TrackRequest
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 # ── State ────────────────────────────────────────────────────────────────────
