@@ -51,6 +51,9 @@ Thumbs.db
 # Claude Code local settings
 .claude/
 
+# Playwright MCP session data (screenshots, snapshots, logs)
+.playwright-mcp/
+
 # Logs
 update.log
 *.log

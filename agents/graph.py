@@ -32,6 +32,8 @@ class GraphState(TypedDict):
     confidence:        float
     critique:          str
     critique_history:  list[str]
+    critic_rounds:     list[dict]   # accumulated per-iteration: {iteration, confidence, rejected, reason}
+    validation_checks: list[dict]   # final round: [{name, passed, detail}, ...]
     final:             bool
     error:             str | None
     trace_url:         str | None
@@ -74,7 +76,9 @@ def _capture_trace_url(tracer: LangChainTracer) -> str | None:
         if tracer.latest_run is None:
             return None
         from langsmith import Client
-        return Client().get_run_url(run=tracer.latest_run)
+        client = Client()
+        # share_run makes the trace publicly viewable (no login required)
+        return client.share_run(tracer.latest_run.id)
     except Exception:
         return None
 
@@ -91,6 +95,8 @@ def run(track_id: str) -> dict:
         "confidence": 0.0,
         "critique": "",
         "critique_history": [],
+        "critic_rounds": [],
+        "validation_checks": [],
         "final": False,
         "error": None,
         "trace_url": None,

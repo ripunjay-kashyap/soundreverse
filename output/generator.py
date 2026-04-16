@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,13 @@ class BlueprintPDF(FPDF):
         self.set_auto_page_break(auto=True, margin=18)
         self.set_margins(14, 14, 14)
 
+    def normalize_text(self, txt: str) -> str:
+        """Override to silently replace any non-latin-1 chars instead of crashing."""
+        try:
+            return super().normalize_text(txt)
+        except Exception:
+            return txt.encode("latin-1", errors="replace").decode("latin-1")
+
     # -- Header ---------------------------------------------------------------
     def header(self):
         self.set_fill_color(*PRIMARY)
@@ -37,7 +45,7 @@ class BlueprintPDF(FPDF):
         self.set_font("Helvetica", "B", 9)
         self.set_text_color(*WHITE)
         self.set_y(2)
-        self.cell(0, 7, f"SoundReverse  ·  Producer Session Pack  ·  {self.track_id}", align="C")
+        self.cell(0, 7, self._safe(f"SoundReverse  \xb7  Producer Session Pack  \xb7  {self.track_id}"), align="C")
         self.set_text_color(*PRIMARY)
         self.ln(10)
 
@@ -47,16 +55,28 @@ class BlueprintPDF(FPDF):
         self.set_font("Helvetica", "", 7)
         self.set_text_color(*MID_GREY)
         trace_text = f"Trace: {self.trace_url}"
-        self.cell(0, 5, trace_text, align="C")
+        self.cell(0, 5, self._safe(trace_text), align="C")
 
     # -- Section title --------------------------------------------------------
     def section_title(self, text: str):
         self.set_fill_color(*ACCENT)
         self.set_text_color(*WHITE)
         self.set_font("Helvetica", "B", 10)
-        self.cell(0, 7, f"  {text}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        self.cell(0, 7, self._safe(f"  {text}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
         self.set_text_color(*PRIMARY)
         self.ln(2)
+
+    @staticmethod
+    def _safe(text: str) -> str:
+        """Replace Unicode chars outside latin-1 range so Helvetica doesn't choke."""
+        return (
+            str(text)
+            .replace("\u2014", "--")   # em dash
+            .replace("\u2013", "-")    # en dash
+            .replace("\u2018", "'").replace("\u2019", "'")   # curly single quotes
+            .replace("\u201c", '"').replace("\u201d", '"')   # curly double quotes
+            .encode("latin-1", errors="replace").decode("latin-1")
+        )
 
     # -- Key/value row --------------------------------------------------------
     def kv_row(self, label: str, value: str, shade: bool = False):
@@ -65,9 +85,9 @@ class BlueprintPDF(FPDF):
         else:
             self.set_fill_color(*WHITE)
         self.set_font("Helvetica", "B", 9)
-        self.cell(50, 6, label, fill=True)
+        self.cell(50, 6, self._safe(label), fill=True)
         self.set_font("Helvetica", "", 9)
-        self.cell(0, 6, value, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        self.cell(0, 6, self._safe(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
 
     # -- Table header row -----------------------------------------------------
     def table_header(self, cols: list[tuple[str, float]]):
@@ -75,7 +95,7 @@ class BlueprintPDF(FPDF):
         self.set_text_color(*WHITE)
         self.set_font("Helvetica", "B", 8)
         for label, width in cols:
-            self.cell(width, 6, label, border=0, fill=True)
+            self.cell(width, 6, self._safe(label), border=0, fill=True)
         self.ln()
         self.set_text_color(*PRIMARY)
 
@@ -85,7 +105,7 @@ class BlueprintPDF(FPDF):
         self.set_fill_color(*fill_color)
         self.set_font("Helvetica", "", 8)
         for text, width in cells:
-            self.cell(width, 6, text, border=0, fill=True)
+            self.cell(width, 6, self._safe(text), border=0, fill=True)
         self.ln()
 
     # -- Reason block ---------------------------------------------------------
@@ -95,10 +115,10 @@ class BlueprintPDF(FPDF):
         else:
             self.set_fill_color(*WHITE)
         self.set_font("Helvetica", "B", 8)
-        self.cell(0, 5, label, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        self.cell(0, 5, self._safe(label), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(*MID_GREY)
-        self.multi_cell(0, 5, reason, fill=True)
+        self.multi_cell(0, 5, self._safe(reason), fill=True)
         self.set_text_color(*PRIMARY)
         self.ln(1)
 
@@ -330,12 +350,38 @@ def output_node(state: "GraphState") -> "GraphState":
     preset_path.write_text(json.dumps(preset, indent=2), encoding="utf-8")
 
     # ── PDF blueprint ────────────────────────────────────────────────────────
-    pdf = BlueprintPDF(track_id=track_id, trace_url=trace_url)
-    _page1_overview(pdf, state)
-    _page2_reasoning(pdf, state)
-    _page3_critic_log(pdf, state)
+    try:
+        pdf = BlueprintPDF(track_id=track_id, trace_url=trace_url)
+        _page1_overview(pdf, state)
+        _page2_reasoning(pdf, state)
+        _page3_critic_log(pdf, state)
+        pdf_path = OUTPUT_DIR / f"{track_id}_blueprint.pdf"
+        pdf.output(str(pdf_path))
+    except Exception as pdf_err:
+        print(f"[PDF] generation failed for {track_id}: {pdf_err}")
 
-    pdf_path = OUTPUT_DIR / f"{track_id}_blueprint.pdf"
-    pdf.output(str(pdf_path))
+    # ── Metadata JSON ────────────────────────────────────────────────────────
+    run_id = None
+    if trace_url:
+        # trace URL ends with the run UUID, grab first 8 chars
+        run_id = trace_url.rstrip("/").split("/")[-1][:8]
+
+    metadata = {
+        "run_id": run_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "track_id": track_id,
+        "pipeline": {
+            "gateway": {"source": "cache", "latency_ms": None},
+            "analyst": {
+                "iterations": state["iteration_count"],
+                "model": "gemini-2.5-flash-lite",
+                "latency_ms": None,
+            },
+            "critic": {"rounds": state.get("critic_rounds", [])},
+        },
+        "trace_url": trace_url,
+    }
+    metadata_path = OUTPUT_DIR / f"{track_id}_metadata.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     return {**state, "trace_url": trace_url}
