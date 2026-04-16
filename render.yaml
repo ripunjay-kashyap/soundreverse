@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: soundreverse-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_PROJECT
+        value: soundreverse-v1
+      - key: LANGCHAIN_TRACING_V2
+        value: "true"
+      - key: OUTPUT_DIR
+        value: /tmp/soundreverse
+      - key: CORS_ORIGINS
+        sync: false

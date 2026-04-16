@@ -7,6 +7,8 @@ import CriticTimeline from './components/CriticTimeline'
 import ProducerSettings from './components/ProducerSettings'
 import OutputDownloads from './components/OutputDownloads'
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 export default function App() {
   const [tracks, setTracks]               = useState([])
   const [selectedTrack, setSelectedTrack] = useState('')
@@ -15,7 +17,7 @@ export default function App() {
   const [error, setError]                 = useState(null)
 
   useEffect(() => {
-    fetch('/tracks')
+    fetch(`${API_BASE}/tracks`)
       .then(r => r.json())
       .then(data => {
         setTracks(data)
@@ -30,7 +32,7 @@ export default function App() {
     setResult(null)
     setError(null)
     try {
-      const res = await fetch('/analyze', {
+      const res = await fetch(`${API_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ track_id: selectedTrack }),
@@ -39,7 +41,13 @@ export default function App() {
         const err = await res.json()
         throw new Error(err.detail || `HTTP ${res.status}`)
       }
-      setResult(await res.json())
+      const data = await res.json()
+      if (data.outputs && API_BASE) {
+        data.outputs.pdf_url      = API_BASE + data.outputs.pdf_url
+        data.outputs.json_url     = API_BASE + data.outputs.json_url
+        data.outputs.metadata_url = API_BASE + data.outputs.metadata_url
+      }
+      setResult(data)
     } catch (e) {
       setError(e.message)
     } finally {

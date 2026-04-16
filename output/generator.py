@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,7 +10,7 @@ from fpdf.enums import XPos, YPos
 if TYPE_CHECKING:
     from agents.graph import GraphState
 
-OUTPUT_DIR = Path(__file__).parent.parent / "output"
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(Path(__file__).parent.parent / "output")))
 
 # ── Colour palette ───────────────────────────────────────────────────────────
 PRIMARY   = (15,  23,  42)   # slate-900
