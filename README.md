@@ -2,6 +2,8 @@
 
 **A LangGraph multi-agent system that reverse-engineers mastering decisions from a track's sonic fingerprint — producing EQ settings, compression parameters, and agent reasoning as a downloadable Producer Session Pack.**
 
+**[Live Demo →](https://soundreverse.vercel.app)**
+
 ---
 
 ## Dashboard
