@@ -29,7 +29,7 @@ class ReasonBundle(BaseModel):
 
 # ── Pure-Python rule evaluation ──────────────────────────────────────────────
 
-def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int = 0) -> dict[str, Any]:
+def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int = 0, stress_test: bool = False) -> dict[str, Any]:
     """
     Evaluate each rule condition against the SignalSignature.
     Returns a dict with: eq_bands, compression, master_gain_db, reasons_templates.
@@ -65,9 +65,10 @@ def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int =
         elif rule_id == "kick_fundamental_boost":
             if drums and drums.kick_fundamental_hz is not None:
                 freq = int(drums.kick_fundamental_hz)
-                
-                # Stress test: Deliberately overshoot target on pass 1 to force a Critic rejection!
-                if sig.track_id == "humble_kendrick" and iteration_count == 0:
+
+                # Stress test: deliberately overshoot kick freq on iteration 0 to exercise the
+                # Analyst→Critic rejection loop. Enabled via GraphState, not hardcoded per track.
+                if stress_test and iteration_count == 0:
                     freq += 30
 
                 band = {
@@ -181,11 +182,12 @@ def analyst_node(state: "GraphState") -> "GraphState":
     sig: SignalSignature = state["signal_signature"]
     critique: str = state.get("critique", "")
     iteration_count: int = state.get("iteration_count", 0)
+    stress_test: bool = state.get("stress_test", False)
 
     rules_data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))
     rules = rules_data["rules"]
 
-    draft = _apply_rules(sig, rules, iteration_count)
+    draft = _apply_rules(sig, rules, iteration_count, stress_test)
 
     llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
     bundle = _refine_reasons(sig, draft, critique, llm)

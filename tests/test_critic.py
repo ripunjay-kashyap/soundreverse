@@ -57,7 +57,7 @@ def _kick_band(freq):
 def test_all_checks_pass_gives_confidence_1():
     sig = _sig(master=_master(lufs=-12.0, dr=7.0, tilt=0.5))
     settings = _settings()
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert confidence == 1.0
     assert failures == []
 
@@ -67,7 +67,7 @@ def test_all_checks_pass_gives_confidence_1():
 def test_over_compression_flagged_when_dr_below_4():
     sig = _sig(master=_master(dr=3.0))
     settings = _settings(compression=_compression())
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert any("over-compression" in f.lower() or "compression" in f.lower() for f in failures)
     assert confidence < 1.0
 
@@ -75,7 +75,7 @@ def test_over_compression_flagged_when_dr_below_4():
 def test_compression_allowed_when_dr_above_4():
     sig = _sig(master=_master(dr=5.0))
     settings = _settings(compression=_compression())
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert not any("compression" in f.lower() for f in failures)
 
 
@@ -84,7 +84,7 @@ def test_compression_allowed_when_dr_above_4():
 def test_high_shelf_boost_on_bright_mix_flagged():
     sig = _sig(master=_master(tilt=0.8))
     settings = _settings(eq=[_high_shelf(gain_db=+1.5)])
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert any("bright" in f.lower() or "spectral_tilt" in f.lower() for f in failures)
     assert confidence < 1.0
 
@@ -92,7 +92,7 @@ def test_high_shelf_boost_on_bright_mix_flagged():
 def test_high_shelf_cut_on_bright_mix_passes():
     sig = _sig(master=_master(tilt=0.8))
     settings = _settings(eq=[_high_shelf(gain_db=-2.5)])
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert not any("spectral_tilt" in f.lower() for f in failures)
 
 
@@ -101,7 +101,7 @@ def test_high_shelf_cut_on_bright_mix_passes():
 def test_master_gain_boost_on_loud_track_flagged():
     sig = _sig(master=_master(lufs=-8.0))
     settings = _settings(master_gain=+2.0)
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert any("lufs" in f.lower() or "loudness" in f.lower() for f in failures)
     assert confidence < 1.0
 
@@ -109,7 +109,7 @@ def test_master_gain_boost_on_loud_track_flagged():
 def test_master_gain_boost_on_quiet_track_passes():
     sig = _sig(master=_master(lufs=-16.0))
     settings = _settings(master_gain=+3.0)
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert not any("loudness" in f.lower() for f in failures)
 
 
@@ -118,7 +118,7 @@ def test_master_gain_boost_on_quiet_track_passes():
 def test_kick_freq_mismatch_over_20hz_flagged():
     sig = _sig(kick_hz=60.0)
     settings = _settings(eq=[_kick_band(freq=90)])  # 30Hz off
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert any("kick" in f.lower() or "freq" in f.lower() for f in failures)
     assert confidence < 1.0
 
@@ -126,7 +126,7 @@ def test_kick_freq_mismatch_over_20hz_flagged():
 def test_kick_freq_within_20hz_passes():
     sig = _sig(kick_hz=60.0)
     settings = _settings(eq=[_kick_band(freq=65)])  # 5Hz off
-    confidence, failures = _run_checks(sig, settings)
+    confidence, _, failures = _run_checks(sig, settings)
     assert not any("kick" in f.lower() for f in failures)
 
 

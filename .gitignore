@@ -73,6 +73,10 @@ frontend/.env.*.local
 # Project Cache
 cache/
 
-# Markdown docs
+# Markdown docs — ignore scratch/temp .md files, keep project docs
 *.md
 !README.md
+
+# Explicit scratch files at root
+inst.md
+update.log

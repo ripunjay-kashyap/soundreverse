@@ -37,6 +37,7 @@ class GraphState(TypedDict):
     final:             bool
     error:             str | None
     trace_url:         str | None
+    stress_test:       bool         # if True, analyst deliberately overshoots kick freq on iteration 0
     # internal: used by gateway to know which track to load
     _track_id:         str
 
@@ -83,7 +84,7 @@ def _capture_trace_url(tracer: LangChainTracer) -> str | None:
         return None
 
 
-def run(track_id: str) -> dict:
+def run(track_id: str, stress_test: bool = False) -> dict:
     app = build_graph()
 
     initial_state: GraphState = {
@@ -100,6 +101,7 @@ def run(track_id: str) -> dict:
         "final": False,
         "error": None,
         "trace_url": None,
+        "stress_test": stress_test,
     }
 
     project = os.environ.get("LANGSMITH_PROJECT", "soundreverse-v1")

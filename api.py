@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 
@@ -51,12 +52,14 @@ def get_tracks():
 
 
 @app.post("/analyze")
-def analyze(req: AnalyzeRequest):
-    valid_ids = {t["track_id"] for t in TRACKS}
-    if req.track_id not in valid_ids:
+async def analyze(req: AnalyzeRequest):
+    track_meta = next((t for t in TRACKS if t["track_id"] == req.track_id), None)
+    if track_meta is None:
         raise HTTPException(status_code=404, detail=f"Track '{req.track_id}' not found in cache.")
 
-    state = run_graph(req.track_id)
+    # run_graph is synchronous (LangGraph + Gemini calls); offload to thread pool
+    # so the FastAPI event loop stays free to handle other requests during the ~20s run
+    state = await asyncio.to_thread(run_graph, req.track_id, track_meta["stress_test"])
 
     if state.get("error"):
         raise HTTPException(status_code=500, detail=state["error"])
