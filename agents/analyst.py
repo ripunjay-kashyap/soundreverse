@@ -190,7 +190,12 @@ def analyst_node(state: "GraphState") -> "GraphState":
     draft = _apply_rules(sig, rules, iteration_count, stress_test)
 
     llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
-    bundle = _refine_reasons(sig, draft, critique, llm)
+    try:
+        bundle = _refine_reasons(sig, draft, critique, llm)
+    except ServerError:
+        return {**state, "error": "Gemini API is temporarily unavailable (503). Please try again in a moment."}
+    except ClientError as e:
+        return {**state, "error": f"Gemini API request failed — check your GOOGLE_API_KEY or quota. ({e})"}
 
     # Build EQBand objects with LLM-refined reasons
     eq_bands = []
