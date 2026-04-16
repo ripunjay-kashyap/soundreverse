@@ -14,7 +14,7 @@
 
 ## How It Works
 
-### Signal Extraction — custom MCP server (offline)
+### Signal Extraction — [custom MCP server](https://github.com/ripunjkashyap-a11y/Audio_stem_splt) (offline)
 
 A custom MCP server built with **HTDemucs 4-stem**, **FFmpeg**, and **Librosa** separates a track into stems and extracts a `SignalSignature` — per-stem LUFS, dynamic range, spectral tilt, kick fundamental Hz, stereo correlation, BPM, key, and more.
 
