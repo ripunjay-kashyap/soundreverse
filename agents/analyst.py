@@ -179,6 +179,9 @@ def _refine_reasons(
 # ── Main node ────────────────────────────────────────────────────────────────
 
 def analyst_node(state: "GraphState") -> "GraphState":
+    if state.get("error"):
+        return state
+
     sig: SignalSignature = state["signal_signature"]
     critique: str = state.get("critique", "")
     iteration_count: int = state.get("iteration_count", 0)

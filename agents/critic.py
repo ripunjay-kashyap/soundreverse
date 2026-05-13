@@ -141,6 +141,9 @@ def _generate_critique(
 
 
 def critic_node(state: "GraphState") -> "GraphState":
+    if state.get("error"):
+        return state
+
     sig: SignalSignature = state["signal_signature"]
     settings: ProducerSettings = state["producer_settings"]
     iteration_count: int = state.get("iteration_count", 0) + 1

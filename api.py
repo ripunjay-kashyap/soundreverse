@@ -47,7 +47,7 @@ TRACKS = [
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
-    track_id: str
+    user_input: str
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -59,13 +59,12 @@ def get_tracks():
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
-    track_meta = next((t for t in TRACKS if t["track_id"] == req.track_id), None)
-    if track_meta is None:
-        raise HTTPException(status_code=404, detail=f"Track '{req.track_id}' not found in cache.")
+    # Determine if this is a stress test (Humble by Kendrick Lamar is our demo for this)
+    stress_test = "humble" in req.user_input.lower()
 
     # run_graph is synchronous (LangGraph + Gemini calls); offload to thread pool
     # so the FastAPI event loop stays free to handle other requests during the ~20s run
-    state = await asyncio.to_thread(run_graph, req.track_id, track_meta["stress_test"])
+    state = await asyncio.to_thread(run_graph, req.user_input, stress_test)
 
     if state.get("error"):
         raise HTTPException(status_code=500, detail=state["error"])
@@ -73,15 +72,17 @@ async def analyze(req: AnalyzeRequest):
     sig      = state["signal_signature"]
     settings = state["producer_settings"]
     meta     = sig.metadata if sig else {}
-    track_id = req.track_id
+    researcher_meta = state.get("researcher_metadata", {})
+    track_id = state.get("_track_id", "unknown")
 
     return {
         "track": {
-            "title":  meta.get("title", track_id),
-            "artist": meta.get("artist", ""),
+            "title":  researcher_meta.get("title") or meta.get("title", track_id),
+            "artist": researcher_meta.get("artist") or meta.get("artist", ""),
             "lufs":   sig.master.lufs   if sig else None,
             "bpm":    sig.rhythm.bpm    if sig else None,
             "key":    sig.rhythm.key    if sig else None,
+            "youtube_url": state.get("youtube_url"),
         },
         "pipeline": {
             "confidence":        state["confidence"],
@@ -89,6 +90,7 @@ async def analyze(req: AnalyzeRequest):
             "max_iterations":    3,
             "critic_rounds":     state.get("critic_rounds", []),
             "validation_checks": state.get("validation_checks", []),
+            "researcher_reasoning": researcher_meta.get("reasoning"),
         },
         "settings": settings.model_dump() if settings else None,
         "trace_url": state.get("trace_url"),

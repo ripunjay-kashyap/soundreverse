@@ -1,31 +1,29 @@
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING
-
 from schemas.signal_signature import SignalSignature
 from schemas.track_request import TrackRequest
 
 if TYPE_CHECKING:
     from agents.graph import GraphState
 
-CACHE_DIR = Path(__file__).parent.parent / "cache"
-
-
 def gateway_node(state: "GraphState") -> "GraphState":
-    track_id: str = state.get("_track_id", "")
+    """
+    Gateway node: Validates the raw MCP output against the SignalSignature schema.
+    """
+    if state.get("error"):
+        return state
 
-    cache_path = CACHE_DIR / f"{track_id}.json"
+    raw_data = state.get("raw_mcp_output")
+    track_id = state.get("_track_id", "unknown_track")
 
-    if not cache_path.exists():
+    if not raw_data:
         return {
             **state,
-            "error": f"Track '{track_id}' not found in cache. Available: {[p.stem for p in CACHE_DIR.glob('*.json')]}",
+            "error": "No raw_mcp_output provided to Gateway.",
             "final": True,
         }
 
     try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
-        sig = SignalSignature.model_validate(data)
+        sig = SignalSignature.model_validate(raw_data)
         track_request = TrackRequest(track_id=track_id, signal_signature=sig)
         return {
             **state,
@@ -36,6 +34,6 @@ def gateway_node(state: "GraphState") -> "GraphState":
     except Exception as exc:
         return {
             **state,
-            "error": f"Failed to load '{track_id}': {exc}",
+            "error": f"Gateway schema validation failed for '{track_id}': {exc}",
             "final": True,
         }

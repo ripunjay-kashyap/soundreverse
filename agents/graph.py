@@ -14,6 +14,8 @@ from langchain_core.tracers.langchain import LangChainTracer
 from agents.critic import critic_node
 from agents.gateway import gateway_node
 from agents.analyst import analyst_node
+from agents.researcher import researcher_node
+from agents.mcp_mock import mcp_mock_node
 from output.generator import output_node
 from schemas.producer_settings import ProducerSettings
 from schemas.signal_signature import SignalSignature
@@ -25,6 +27,10 @@ load_dotenv(override=True)
 # ── State ────────────────────────────────────────────────────────────────────
 
 class GraphState(TypedDict):
+    user_input:        str | None
+    youtube_url:       str | None
+    researcher_metadata: dict | None
+    raw_mcp_output:    dict | None
     track_request:     TrackRequest | None
     signal_signature:  SignalSignature | None
     producer_settings: ProducerSettings | None
@@ -55,11 +61,15 @@ def _route_after_critic(state: GraphState) -> str:
 def build_graph() -> StateGraph:
     graph = StateGraph(GraphState)
 
+    graph.add_node("researcher", researcher_node)
+    graph.add_node("mcp_mock", mcp_mock_node)
     graph.add_node("gateway", gateway_node)
     graph.add_node("analyst", analyst_node)
     graph.add_node("critic", critic_node)
 
-    graph.set_entry_point("gateway")
+    graph.set_entry_point("researcher")
+    graph.add_edge("researcher", "mcp_mock")
+    graph.add_edge("mcp_mock", "gateway")
     graph.add_edge("gateway", "analyst")
     graph.add_edge("analyst", "critic")
     graph.add_conditional_edges("critic", _route_after_critic, {
@@ -84,11 +94,15 @@ def _capture_trace_url(tracer: LangChainTracer) -> str | None:
         return None
 
 
-def run(track_id: str, stress_test: bool = False) -> dict:
+def run(user_input: str, stress_test: bool = False) -> dict:
     app = build_graph()
 
     initial_state: GraphState = {
-        "_track_id": track_id,
+        "user_input": user_input,
+        "youtube_url": None,
+        "researcher_metadata": None,
+        "raw_mcp_output": None,
+        "_track_id": "",
         "track_request": None,
         "signal_signature": None,
         "producer_settings": None,
@@ -120,6 +134,8 @@ def run(track_id: str, stress_test: bool = False) -> dict:
     # Generate outputs now that we have the real trace URL
     final_state = output_node(final_state)
 
+    track_id = final_state.get("_track_id", "unknown")
+
     print(f"\nTrack:       {track_id}")
     print(f"Confidence:  {final_state['confidence']:.2f}")
     print(f"Iterations:  {final_state['iteration_count']}")
@@ -137,3 +153,4 @@ if __name__ == "__main__":
     parser.add_argument("--track", required=True, help="Track ID (e.g. billie_jean_mj)")
     args = parser.parse_args()
     run(args.track)
+
