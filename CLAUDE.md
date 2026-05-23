@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-A LangGraph multi-agent system that takes a **song query** (e.g. "Humble by Kendrick Lamar") and outputs a Producer Session Pack (EQ settings, compression parameters, agent reasoning trace). A Researcher agent resolves the query to an official YouTube URL, an MCP step produces the track's `SignalSignature`, and the Gateway → Analyst → Critic loop turns that into producer settings.
+A LangGraph multi-agent system that takes a **song query** (e.g. "Humble by Kendrick Lamar") and outputs a Producer Session Pack (EQ settings, compression parameters, plain-language musician notes, agent reasoning trace). A Researcher agent resolves the query to an official YouTube URL, an MCP step produces the track's `SignalSignature`, a Musician agent derives plain-language notes from it, and the Gateway → Analyst → Critic loop turns that into producer settings.
 
 **Audio analysis runs in an external MCP server, not in this process.** Today that step is a **mock** (`agents/mcp_mock.py`) that returns one of 5 pre-cached `SignalSignature` JSON files; a **real MCP server hosted on Modal** is being integrated to replace it (returns the same `SignalSignature` shape from real audio). See `BACKEND_IMPROVEMENT_PLAN.md` for the integration plan.
 
@@ -22,34 +22,41 @@ soundreverse/
 │   ├── humble_kendrick.json
 │   └── blinding_lights_weeknd.json
 ├── agents/
-│   ├── researcher.py          ← yt-dlp search + Gemini → official YouTube URL, slug, metadata
+│   ├── researcher.py          ← yt-dlp search + Gemini → official YouTube URL, slug, metadata (+ _clean_youtube_url)
 │   ├── mcp_mock.py            ← MOCK MCP: matches song → cache file, emits raw_mcp_output (real Modal MCP replaces this)
 │   ├── gateway.py             ← validates raw_mcp_output (from state) against SignalSignature → TrackRequest
-│   ├── analyst.py             ← maps SignalSignature → ProducerSettings
+│   ├── musician.py            ← derives plain-language MusicianNotes (tuning targets + tonal tags) from the signature
+│   ├── analyst.py             ← applies rules.yaml in pure Python; LLM only writes the reason strings → ProducerSettings
 │   ├── critic.py              ← validates settings, loops max 3x
-│   └── graph.py               ← LangGraph orchestration (researcher→mcp_mock→gateway→analyst→critic)
+│   └── graph.py               ← LangGraph orchestration (researcher→mcp_mock→gateway→musician→analyst→critic)
 ├── schemas/
 │   ├── signal_signature.py    ← Pydantic model for cache JSON
 │   ├── track_request.py       ← Pydantic model for gateway output
-│   └── producer_settings.py   ← Pydantic model for analyst output
+│   ├── producer_settings.py   ← Pydantic model for analyst output
+│   └── musician_notes.py      ← Pydantic model for musician output (MusicianNotes, TuningTarget)
 ├── rules/
-│   └── rules.yaml             ← deterministic mapping rules for Analyst
+│   └── rules.yaml             ← deterministic mapping rules the Analyst evaluates in pure Python
 ├── output/
-│   └── generator.py           ← builds PDF + JSON preset + metadata from final settings
-├── api.py                     ← FastAPI async job queue (Supabase-backed): POST /analyze → job_id, GET /jobs/{id}
+│   └── generator.py           ← builds 2-page PDF + JSON preset + metadata; filenames prefixed by job_id (or track_id on CLI)
+├── utils/
+│   └── supabase_client.py     ← lazy-singleton get_supabase() shared by api.py
+├── api.py                     ← FastAPI async job queue (Supabase-backed): POST /analyze → job_id, GET /jobs/{id}; + orphan reaper & output sweeper
 ├── .mcp.json                  ← Supabase MCP server (Claude Code tooling — NOT app runtime)
 ├── plans/                     ← design notes (researcher_agent_plan.md)
 ├── BACKEND_IMPROVEMENT_PLAN.md ← production-readiness plan before real-MCP integration
-├── tests/                     ← pytest: analyst_rules, critic, gateway, output (researcher/mcp_mock untested)
+├── tests/                     ← pytest: analyst_rules, critic, gateway, output, researcher, mcp_contract
 ├── frontend/                  ← React + Vite + Tailwind UI
 │   ├── src/
 │   │   ├── App.jsx
 │   │   ├── components/
 │   │   │   ├── TrackSelector.jsx
+│   │   │   ├── FileUpload.jsx
 │   │   │   ├── AnalyzeButton.jsx
 │   │   │   ├── SignalSummary.jsx
+│   │   │   ├── MusicianNotes.jsx
 │   │   │   ├── ConfidencePanel.jsx
 │   │   │   ├── CriticTimeline.jsx
+│   │   │   ├── ProducerSettings.jsx
 │   │   │   └── OutputDownloads.jsx
 │   │   └── main.jsx
 │   ├── package.json
@@ -65,14 +72,14 @@ soundreverse/
 ## Tech Stack
 
 - **Orchestration:** LangGraph (Python)
-- **LLM:** `gemini-3.1-flash-lite-preview` via `langchain-google-genai` — use this exact model string everywhere (defined as `MODEL` in analyst.py, critic.py, researcher.py; also hardcoded in generator.py metadata)
+- **LLM:** `gemini-3.1-flash-lite-preview` via `langchain-google-genai` — use this exact model string everywhere (defined as `MODEL` in analyst.py, critic.py, researcher.py, musician.py; also hardcoded in generator.py metadata)
 - **Song search:** `yt-dlp` (`ytsearch3`) in the Researcher agent
 - **Audio analysis:** external MCP server — **mock** today (`agents/mcp_mock.py`), **real server hosted on Modal** being integrated
 - **Schemas:** Pydantic v2
 - **Rules engine:** PyYAML
 - **PDF output:** fpdf2
 - **API:** FastAPI + uvicorn (`api.py` at project root) — async job queue
-- **Job state:** Supabase (`jobs` table) via the `supabase` Python client
+- **Job state:** Supabase (`jobs` table) via the `supabase` Python client (shared lazy singleton in `utils/supabase_client.py`)
 - **Frontend:** React + Vite + Tailwind CSS (no component library) in `frontend/`
 - **Tracing:** LangSmith (required — every run must produce a trace)
 - **Cache:** flat JSON files in `/cache` — no Redis
@@ -100,9 +107,12 @@ Inserts a row into the Supabase `jobs` table (`status: "pending"`) and runs the 
     "track":    { "title": "...", "artist": "...", "lufs": -6.8, "bpm": 150.0, "key": "Eb Minor", "youtube_url": "..." },
     "pipeline": { "confidence": 1.0, "iteration_count": 2, "max_iterations": 3,
                   "critic_rounds": [...], "validation_checks": [...], "researcher_reasoning": "..." },
-    "settings":  { "eq": [...], "compression": {...}, "master_gain_db": 0 },
+    "settings":  { "eq": [...], "compression": {...}, "compression_skip_reason": "...",
+                   "master_gain_db": 0, "master_gain_reason": "..." },
+    "musician":  { "tuning_targets": [...], "tuning_tip": "...", "tonal_tags": [...], "tonal_character": "..." },
     "trace_url": "https://smith.langchain.com/...",
     "outputs":   { "pdf_url": "...", "json_url": "...", "metadata_url": "..." } } }
+// outputs filenames are prefixed by job_id, e.g. /outputs/{job_id}_blueprint.pdf
 // pending / processing
 { "job_id": "uuid", "status": "processing" }
 // failed
@@ -113,7 +123,7 @@ Inserts a row into the Supabase `jobs` table (`status: "pending"`) and runs the 
 Returns `{ track_id, label, stress_test }` for the 5 demo tracks (used by the frontend's suggestions).
 
 ### GET /outputs/{filename}
-Serves generated files as static downloads. **Note:** these live on local disk today and do not survive restarts — planned move to Supabase Storage (see `BACKEND_IMPROVEMENT_PLAN.md` §2A).
+Serves generated files as static downloads, prefixed by `job_id` (e.g. `{job_id}_blueprint.pdf`). **Note:** these live on local disk and, in production (`ENV=production`/`PRODUCTION=true`), a background sweeper deletes files older than 1h every 15 min; they don't survive restarts — planned move to Supabase Storage (see `BACKEND_IMPROVEMENT_PLAN.md` §2A). On startup an **orphan reaper** marks any `pending`/`processing` job older than 10 min as `failed`.
 
 ---
 
@@ -146,9 +156,9 @@ pytest tests/ -v
 ### The Flow
 
 ```
-Researcher → MCP (mock) → Gateway → Analyst → Critic → OUTPUT
-                                        ↑_________↓
-                                     (max 3 loops)
+Researcher → MCP (mock) → Gateway → Musician → Analyst → Critic → OUTPUT
+                                                   ↑_________↓
+                                                (max 3 loops)
 ```
 
 `output_node` runs **outside** the graph (called in `run()` after `app.invoke()`), so the real LangSmith trace URL is available before generating files.
@@ -159,7 +169,7 @@ Researcher → MCP (mock) → Gateway → Analyst → Critic → OUTPUT
 - Uses `yt-dlp` (`ytsearch3`) to find candidates, then `gemini-3.1-flash-lite-preview` (tool-call → `ResearcherResult`) to pick the **official** channel/Topic upload
 - Returns `youtube_url`, `researcher_metadata` (title, artist, slug, reasoning) into state
 - Generates a slugified `track_id` (e.g. `humble_kendrick_lamar`)
-- **Planned:** `_clean_youtube_url()` to strip radio/`list=RD…`/`start_radio` params that break yt-dlp and the MCP downloader (see `BACKEND_IMPROVEMENT_PLAN.md` §3.1)
+- `_clean_youtube_url()` strips radio/`list=RD…`/`start_radio` params that break yt-dlp and the MCP downloader — applied to both the raw input and the resolved URL
 
 ### MCP Step (`agents/mcp_mock.py` → real Modal server)
 
@@ -174,14 +184,22 @@ Researcher → MCP (mock) → Gateway → Analyst → Critic → OUTPUT
 
 **No LLM call in the Gateway. It is pure Python.**
 
+### Musician Agent (`agents/musician.py`)
+
+- Runs **between Gateway and Analyst**; reads `signal_signature` and writes `musician_notes` (a `MusicianNotes`) into state
+- **Deterministic facts (no LLM):** per-stem fundamentals → `TuningTarget`s (Hz + nearest note via `_hz_to_note`), plus plain-language `tonal_tags` derived from master energy ratios / spectral tilt / stereo metrics
+- **LLM phrasing (grounded):** a tool-call (`_NotesDraft`) writes a friendly `tuning_tip` + `tonal_character` using only the given facts — it must not invent numbers
+- **Supplementary & resilient:** if the LLM call fails it degrades to deterministic fallback text and **never fails the run** (if there's no signature it passes state through untouched)
+- Aimed at the non-technical-musician audience — this becomes page 1 of the PDF and the `MusicianNotes` card in the UI
+
 ### Analyst Agent (`agents/analyst.py`)
 
-- Receives `SignalSignature` JSON
-- Loads `rules/rules.yaml` at runtime
-- Sends both to `gemini-3.1-flash-lite-preview` with a structured prompt
-- Must return a valid `ProducerSettings` object (Pydantic)
-- Each setting must include a `reason` field referencing the actual metric value (e.g. `"spectral_tilt=0.74"`)
-- Use structured output / tool use to enforce the schema — do not parse free text
+- Receives `SignalSignature` + the current `critique` + `iteration_count`
+- Loads `rules/rules.yaml` and evaluates every rule in **pure Python** (`_apply_rules`) — this is what decides the EQ bands, compression, and master gain. **The LLM never picks settings or numbers.**
+- The LLM call (`_refine_reasons`, tool-call → `ReasonBundle`) only **rewrites the human-readable `reason` strings**, grounded in the deterministic draft plus any prior critique — it must not invent settings or change values
+- Builds a valid `ProducerSettings` (Pydantic) from the draft + refined reasons; each `reason` references the actual metric value (e.g. `"spectral_tilt=0.74"`)
+- **Stress test** lives here: when `stress_test` is set and `iteration_count == 0`, the kick-fundamental EQ freq is deliberately overshot by +30 Hz to exercise the Analyst→Critic rejection loop
+- On Gemini failure returns a clear `error` (5xx → retryable message; 4xx → key/quota message) instead of crashing
 
 ### Critic Agent (`agents/critic.py`)
 
@@ -191,12 +209,13 @@ Researcher → MCP (mock) → Gateway → Analyst → Critic → OUTPUT
 - If `confidence >= 0.75` OR `iteration_count >= 3`: sign off and return final output
 - If `confidence < 0.75` AND `iteration_count < 3`: return rejection with specific reason, increment counter, send back to Analyst
 - The rejection reason must quote the exact metric that caused the mismatch
+- Emits `critic_rounds` (per-iteration log) and final-round `validation_checks` into state for the UI and the metadata JSON
 
 ### Graph (`agents/graph.py`)
 
 - Built with LangGraph `StateGraph`; entry point is `researcher`
-- `GraphState` includes: `user_input`, `youtube_url`, `researcher_metadata`, `raw_mcp_output`, `_track_id`, `track_request`, `signal_signature`, `producer_settings`, `iteration_count`, `confidence`, `critique`, `critique_history`, `critic_rounds`, `validation_checks`, `final`, `error`, `trace_url`, `stress_test`
-- Edges: Researcher → MCP(mock) → Gateway → Analyst → Critic → (conditional: loop back to Analyst OR proceed to Output/END)
+- `GraphState` includes: `user_input`, `youtube_url`, `researcher_metadata`, `raw_mcp_output`, `_track_id`, `track_request`, `signal_signature`, `musician_notes`, `producer_settings`, `iteration_count`, `confidence`, `critique`, `critique_history`, `critic_rounds`, `validation_checks`, `final`, `error`, `trace_url`, `stress_test`, `job_id`
+- Edges: Researcher → MCP(mock) → Gateway → Musician → Analyst → Critic → (conditional: loop back to Analyst OR END; `output_node` then runs outside the graph)
 - LangSmith tracing must be enabled via environment variable — every run produces a shareable URL
 
 ---
@@ -264,16 +283,33 @@ class Compression(BaseModel):
 class ProducerSettings(BaseModel):
     eq: list[EQBand]
     compression: Compression | None
+    compression_skip_reason: str | None = None   # set instead of compression.reason when compression is skipped
     master_gain_db: float
+    master_gain_reason: str | None = None
     confidence: float | None = None
     iteration_count: int = 0
+```
+
+### MusicianNotes (Musician output)
+
+```python
+class TuningTarget(BaseModel):
+    element: str       # e.g. "Kick", "Bass", "Vocal presence"
+    hz: float
+    note: str          # nearest musical note, e.g. "B1"
+
+class MusicianNotes(BaseModel):
+    tuning_targets: list[TuningTarget] = []
+    tuning_tip: str = ""          # plain-language line on how to use the targets (LLM, grounded)
+    tonal_tags: list[str] = []    # e.g. ["Bass-forward", "Bright", "Mono-solid"] (deterministic)
+    tonal_character: str = ""     # 1-2 sentence description (LLM, grounded)
 ```
 
 ---
 
 ## Rules File (`rules/rules.yaml`)
 
-The Analyst must load and follow these rules. Do not let the LLM invent mappings.
+The Analyst **loads and evaluates these rules in pure Python** (`_apply_rules`) — the LLM never invents mappings; it only phrases the `reason` strings afterward.
 
 ```yaml
 rules:
@@ -335,17 +371,19 @@ These are the physical impossibility checks the Critic must enforce:
 
 ## Output Generator (`output/generator.py`)
 
-Produces two files per run:
+Runs **outside** the graph (in `run()` after `app.invoke()`), so the real LangSmith trace URL is captured first. Produces **three files per run**, all prefixed by `job_id` when present (else `track_id`):
 
-**1. Blueprint PDF** (via fpdf2)
-- Page 1: Track metadata + EQ settings table + Compression settings
-- Page 2: Agent reasoning — each setting with its `reason` field
-- Page 3: Critic debate log — what was rejected, why, how many iterations
-- Footer: LangSmith trace URL on every page
+**1. Blueprint PDF** — `{prefix}_blueprint.pdf` (via fpdf2, indigo/slate theme, 2 pages)
+- Page 1 (at-a-glance, **musician-first**): hero + stat cards (BPM / Key / LUFS / DR) → Tonal Character + Tuning Targets (from `MusicianNotes`) → EQ Moves table → Bus Compression & Master Gain
+- Page 2 (reference): Mix Signal Profile (measured metrics) → "Why These Settings" reason blocks per EQ band / compression / master gain → confidence pill
+- The critic debate log is **not** in the PDF — it lives in the metadata JSON (`critic_rounds`)
+- Footer with page number on every page; non-latin-1 chars are sanitized so Helvetica won't crash
 
-**2. JSON Preset** (`{track_id}_preset.json`)
-- Raw `ProducerSettings` dict
-- Include `trace_url`, `confidence`, `iteration_count` at top level
+**2. JSON Preset** — `{prefix}_preset.json`
+- Raw `ProducerSettings` dict + `track_id`, `trace_url`, `confidence`, `iteration_count` at top level
+
+**3. Metadata JSON** — `{prefix}_metadata.json`
+- `run_id`, `timestamp`, `track_id`, per-stage `pipeline` info, `critic_rounds`, `trace_url`
 
 ---
 
@@ -358,13 +396,13 @@ LANGSMITH_PROJECT=soundreverse-v1
 LANGCHAIN_TRACING_V2=true
 ```
 
-Every run must log to LangSmith. The trace URL must be captured after graph execution and included in both output files. If LangSmith is not configured, the app should warn but not crash.
+Every run must log to LangSmith. The trace URL must be captured after graph execution and included in all three output files. If LangSmith is not configured, the app should warn but not crash.
 
 ---
 
 ## Frontend (`frontend/`)
 
-React + Vite + Tailwind. Calls `POST /analyze` then polls `GET /jobs/{id}`. Components: `TrackSelector`, `AnalyzeButton`, `SignalSummary`, `ConfidencePanel`, `CriticTimeline`, `ProducerSettings`, `OutputDownloads`. (The old Gradio `ui/app.py` has been replaced by this React app.)
+React + Vite + Tailwind (Tailwind v4 via `@tailwindcss/vite`; design tokens live in `src/index.css`). Calls `POST /analyze` then polls `GET /jobs/{id}` every 3s. In dev, `vite.config.js` proxies `/analyze`, `/jobs`, `/tracks`, `/outputs` to `127.0.0.1:8001`. Components: `TrackSelector`, `FileUpload` (frontend-only audio dropzone — captures into local state; **no upload endpoint yet**, awaiting the real MCP), `AnalyzeButton`, `SignalSummary`, `MusicianNotes`, `ConfidencePanel`, `CriticTimeline`, `ProducerSettings`, `OutputDownloads`. (The old Gradio `ui/app.py` has been replaced by this React app.)
 
 ---
 
@@ -373,19 +411,16 @@ React + Vite + Tailwind. Calls `POST /analyze` then polls `GET /jobs/{id}`. Comp
 - Run audio libraries (Demucs/Librosa/Essentia) **in this repo** — audio analysis belongs in the external MCP server (mock today, Modal-hosted real server being integrated)
 - Use Redis
 - Parse LLM free text to extract ProducerSettings — use structured output / tool calls
-- Let the Analyst invent EQ settings not grounded in `rules.yaml`
+- Let the Analyst LLM pick settings or change numbers — rules are applied in pure Python (`_apply_rules`); the LLM only writes `reason` strings
 - Allow iteration_count to exceed 3 under any circumstance
 - Use any model other than `gemini-3.1-flash-lite-preview`
 - Change the Gateway's `raw_mcp_output` → `SignalSignature` contract without updating the MCP contract (it is the real-MCP swap point)
 
 ---
 
-## Agent Docs
+## Further Reading
 
 For more detail on specific parts of the system, read these files before working on them:
 
-- `agent_docs/graph_state.md` — full LangGraph state schema and edge logic
-- `agent_docs/prompt_templates.md` — exact prompts for Analyst and Critic
-- `agent_docs/output_format.md` — PDF layout specs and JSON preset schema
 - `plans/researcher_agent_plan.md` — Researcher + Mock MCP design notes
 - `BACKEND_IMPROVEMENT_PLAN.md` — production-readiness fixes required before real-MCP integration

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import TrackSelector from './components/TrackSelector'
+import FileUpload from './components/FileUpload'
 import AnalyzeButton from './components/AnalyzeButton'
 import SignalSummary from './components/SignalSummary'
+import MusicianNotes from './components/MusicianNotes'
 import ConfidencePanel from './components/ConfidencePanel'
 import CriticTimeline from './components/CriticTimeline'
 import ProducerSettings from './components/ProducerSettings'
@@ -15,6 +17,15 @@ export default function App() {
   const [result, setResult]               = useState(null)
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState(null)
+  const [booting, setBooting]             = useState(true)
+  const [splashExiting, setSplashExiting] = useState(false)
+
+  // 3s branded splash on first load: hold 2.5s, fade 0.5s, then unmount.
+  useEffect(() => {
+    const fade   = setTimeout(() => setSplashExiting(true), 2500)
+    const unmount = setTimeout(() => setBooting(false), 3000)
+    return () => { clearTimeout(fade); clearTimeout(unmount) }
+  }, [])
 
   useEffect(() => {
     fetch(`${API_BASE}/tracks`)
@@ -31,23 +42,46 @@ export default function App() {
     setLoading(true)
     setResult(null)
     setError(null)
+
     try {
+      // Submit job — returns immediately with a job_id (202 Accepted)
       const res = await fetch(`${API_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: selectedTrack }),
+        body: JSON.stringify({ user_input: selectedTrack }),
       })
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.detail || `HTTP ${res.status}`)
       }
-      const data = await res.json()
-      if (data.outputs && API_BASE) {
-        data.outputs.pdf_url      = API_BASE + data.outputs.pdf_url
-        data.outputs.json_url     = API_BASE + data.outputs.json_url
-        data.outputs.metadata_url = API_BASE + data.outputs.metadata_url
-      }
-      setResult(data)
+      const { job_id } = await res.json()
+
+      // Poll GET /jobs/{job_id} every 3 seconds until completed or failed
+      await new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            const poll = await fetch(`${API_BASE}/jobs/${job_id}`)
+            if (!poll.ok) { clearInterval(interval); reject(new Error(`Poll error ${poll.status}`)); return }
+            const job = await poll.json()
+
+            // TODO(mcp-integration): when the backend returns a live `job.stage`, lift it
+            // into state here and pass it to <LoadingState> to replace the timer-driven caption.
+
+            if (job.status === 'completed') {
+              clearInterval(interval)
+              resolve(job.result)
+            } else if (job.status === 'failed') {
+              clearInterval(interval)
+              reject(new Error(job.error || 'Job failed'))
+            }
+            // pending / processing → keep polling
+          } catch (e) {
+            clearInterval(interval)
+            reject(e)
+          }
+        }, 3000)
+      }).then(data => setResult(data))
+
     } catch (e) {
       setError(e.message)
     } finally {
@@ -56,6 +90,8 @@ export default function App() {
   }
 
   return (
+    <>
+    {booting && <Splash exiting={splashExiting} />}
     <div className="app-layout">
 
       {/* ── Left Sidebar ── */}
@@ -66,12 +102,11 @@ export default function App() {
           <p className="eyebrow" style={{ marginBottom: 8 }}>Audio Intelligence</p>
           <h1 className="font-brand" style={{
             margin: 0,
-            fontSize: 28,
-            fontWeight: 500,
-            fontStyle: 'italic',
+            fontSize: 27,
+            fontWeight: 700,
             color: 'var(--ink)',
             lineHeight: 1.1,
-            letterSpacing: '-0.01em',
+            letterSpacing: '-0.035em',
           }}>
             Sound<span style={{ color: 'var(--sage)' }}>Reverse</span>
           </h1>
@@ -89,7 +124,32 @@ export default function App() {
 
         {/* Track list */}
         <div style={{ padding: '20px 16px', flex: 1, overflowY: 'auto' }}>
-          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Select Track</p>
+          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Search Track</p>
+          <div className="search-bar" style={{ marginBottom: 20 }}>
+            <input
+              type="text"
+              value={selectedTrack}
+              onChange={(e) => setSelectedTrack(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !loading && selectedTrack) handleAnalyze() }}
+              placeholder="Type artist + song..."
+            />
+            <button
+              className="search-go"
+              onClick={handleAnalyze}
+              disabled={loading || !selectedTrack}
+              title="Analyze"
+              aria-label="Analyze"
+            >
+              <ArrowIcon />
+            </button>
+          </div>
+
+          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or Upload a Track</p>
+          <div style={{ marginBottom: 20 }}>
+            <FileUpload />
+          </div>
+
+          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or Select Cached</p>
           <TrackSelector tracks={tracks} selected={selectedTrack} onChange={setSelectedTrack} />
         </div>
 
@@ -98,30 +158,25 @@ export default function App() {
           {error && (
             <div style={{
               marginBottom: 12,
-              padding: '9px 14px',
+              padding: '10px 14px',
               background: 'var(--clay-pale)',
               border: '1px solid var(--clay-border)',
-              borderRadius: 8,
+              borderRadius: 'var(--r-inner)',
               fontSize: 12,
+              fontWeight: 500,
               color: 'var(--clay)',
-              fontFamily: 'Fragment Mono, monospace',
             }}>
               ⚠ {error}
             </div>
           )}
           <AnalyzeButton loading={loading} onClick={handleAnalyze} />
-          <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-            {['LangGraph', 'Gemini', 'HTDemucs', 'LangSmith'].map(t => (
-              <span key={t} className="eyebrow" style={{ opacity: 0.45 }}>{t}</span>
-            ))}
-          </div>
         </div>
       </aside>
 
       {/* ── Right Panel ── */}
       <main className="output-panel">
         {loading ? (
-          <LoadingSkeleton />
+          <LoadingState label={tracks.find(t => t.track_id === selectedTrack)?.label || selectedTrack} />
         ) : result ? (
           <ResultsView result={result} />
         ) : (
@@ -129,12 +184,51 @@ export default function App() {
         )}
       </main>
     </div>
+    </>
+  )
+}
+
+function Splash({ exiting }) {
+  return (
+    <div className={`splash${exiting ? ' exiting' : ''}`}>
+      <div className="splash-mark" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
+        <p className="eyebrow" style={{ margin: 0 }}>Audio Intelligence</p>
+        <h1 className="font-brand" style={{
+          margin: 0,
+          fontSize: 44,
+          fontWeight: 700,
+          color: 'var(--ink)',
+          letterSpacing: '-0.04em',
+          lineHeight: 1,
+        }}>
+          Sound<span style={{ color: 'var(--sage)' }}>Reverse</span>
+        </h1>
+        <BootSpinner />
+      </div>
+    </div>
+  )
+}
+
+function BootSpinner() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style={{ marginTop: 4 }}>
+      <circle cx="15" cy="15" r="12" stroke="var(--sage-border)" strokeWidth="2.5" />
+      <circle
+        cx="15" cy="15" r="12"
+        stroke="var(--sage)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeDasharray="20 56"
+        style={{ animation: 'spin-slow 0.85s linear infinite', transformOrigin: '15px 15px' }}
+      />
+    </svg>
   )
 }
 
 function EmptyState() {
   return (
     <div style={{
+      position: 'relative',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
@@ -142,51 +236,79 @@ function EmptyState() {
       justifyContent: 'center',
       padding: '40px 48px',
       textAlign: 'center',
+      overflow: 'hidden',
     }}>
-      <div style={{
-        width: 52,
-        height: 52,
-        borderRadius: '50%',
-        border: '1.5px solid var(--border-mid)',
+      {/* Ghosted pipeline-stage words (reference's faint category text) */}
+      <div aria-hidden="true" style={{
+        position: 'absolute',
+        inset: 0,
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
         justifyContent: 'center',
-        marginBottom: 22,
-        color: 'var(--ink-5)',
+        gap: 4,
+        paddingLeft: 56,
+        pointerEvents: 'none',
+        userSelect: 'none',
       }}>
-        <WaveformIcon />
+        {['Research', 'Analyze', 'Critique', 'Master'].map((w, i) => (
+          <span key={w} className="font-brand" style={{
+            fontSize: 'clamp(44px, 8vw, 92px)',
+            fontWeight: 300,
+            lineHeight: 1.02,
+            letterSpacing: '-0.03em',
+            color: 'var(--ink)',
+            opacity: 0.035 + i * 0.004,
+          }}>
+            {w}
+          </span>
+        ))}
       </div>
-      <h2 className="font-brand" style={{
-        margin: '0 0 10px',
-        fontSize: 22,
-        fontWeight: 500,
-        fontStyle: 'italic',
-        color: 'var(--ink-3)',
-        letterSpacing: '-0.01em',
-      }}>
-        No analysis yet
-      </h2>
-      <p style={{
-        margin: 0,
-        fontSize: 13,
-        color: 'var(--ink-4)',
-        lineHeight: 1.65,
-        maxWidth: 260,
-      }}>
-        Select a track from the sidebar and run analysis to generate a Producer Session Pack.
-      </p>
-      <div style={{
-        marginTop: 26,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 11,
-        color: 'var(--ink-5)',
-        fontFamily: 'Fragment Mono, monospace',
-        letterSpacing: '0.06em',
-      }}>
-        <span>←</span>
-        <span>choose from the sidebar</span>
+
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{
+          width: 56,
+          height: 56,
+          borderRadius: '50%',
+          background: 'var(--white)',
+          border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-sm)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 22,
+          color: 'var(--sage)',
+        }}>
+          <WaveformIcon />
+        </div>
+        <h2 className="font-brand" style={{
+          margin: '0 0 10px',
+          fontSize: 23,
+          fontWeight: 600,
+          color: 'var(--ink-2)',
+          letterSpacing: '-0.02em',
+        }}>
+          No analysis yet
+        </h2>
+        <p style={{
+          margin: 0,
+          fontSize: 13.5,
+          color: 'var(--ink-4)',
+          lineHeight: 1.65,
+          maxWidth: 280,
+        }}>
+          Select a track from the sidebar and run analysis to generate a Producer Session Pack.
+        </p>
+        <div className="pill" style={{
+          marginTop: 26,
+          background: 'var(--white)',
+          border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-xs)',
+          color: 'var(--ink-4)',
+          letterSpacing: '0.04em',
+        }}>
+          <span>←</span>
+          <span>choose from the sidebar</span>
+        </div>
       </div>
     </div>
   )
@@ -196,6 +318,7 @@ function ResultsView({ result }) {
   return (
     <div className="stagger" style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <SignalSummary    track={result.track}                   />
+      <MusicianNotes    musician={result.musician}             />
       <CriticTimeline   rounds={result.pipeline.critic_rounds} />
       <ConfidencePanel  pipeline={result.pipeline}             />
       <ProducerSettings settings={result.settings}            />
@@ -204,21 +327,82 @@ function ResultsView({ result }) {
   )
 }
 
-function LoadingSkeleton() {
+const LOADING_STAGES = [
+  'Researching the track',
+  'Reading the signal signature',
+  'Mapping producer settings',
+  'Cross-checking with the critic',
+  'Finalizing your session pack',
+]
+
+// TODO(mcp-integration): these captions currently cycle on a timer (cosmetic only) —
+// they convey what the pipeline does, not real live status. Once the backend reports a
+// live `stage` in GET /jobs/{id} (see api.py placeholders), pass it in as a prop and
+// render that instead of the timer-driven index below.
+function LoadingState({ label }) {
+  const [stage, setStage] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setStage(s => (s + 1) % LOADING_STAGES.length), 2800)
+    return () => clearInterval(id)
+  }, [])
+
   return (
-    <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {[80, 140, 120, 200, 90].map((h, i) => (
-        <div
-          key={i}
-          className="card"
-          style={{
-            height: h,
-            animation: `skeleton-pulse 1.6s ease-in-out infinite`,
-            animationDelay: `${i * 0.12}s`,
-          }}
-        />
-      ))}
+    <div className="loading-state anim-fade">
+      <BigSpinner />
+      <h2 className="font-brand" style={{
+        margin: '20px 0 0',
+        fontSize: 24,
+        fontWeight: 600,
+        color: 'var(--ink-2)',
+        letterSpacing: '-0.02em',
+      }}>
+        Analyzing…
+      </h2>
+      {label && (
+        <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--ink-3)', maxWidth: 320 }}>
+          {label}
+        </p>
+      )}
+
+      <div className="progress-track">
+        <div className="progress-bar" />
+      </div>
+
+      <p
+        key={stage}
+        className="eyebrow anim-fade"
+        style={{ marginTop: 18, color: 'var(--ink-4)', opacity: 0.9 }}
+      >
+        {LOADING_STAGES[stage]}
+      </p>
+
+      <p style={{
+        margin: '16px 0 0',
+        fontSize: 12.5,
+        color: 'var(--ink-4)',
+        lineHeight: 1.6,
+        maxWidth: 300,
+      }}>
+        This can take up to a minute — hang tight and keep this tab open.
+      </p>
     </div>
+  )
+}
+
+function BigSpinner() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+      <circle cx="20" cy="20" r="16" stroke="var(--sage-border)" strokeWidth="3" />
+      <circle
+        cx="20" cy="20" r="16"
+        stroke="var(--sage)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray="26 75"
+        style={{ animation: 'spin-slow 0.9s linear infinite', transformOrigin: '20px 20px' }}
+      />
+    </svg>
   )
 }
 
@@ -227,6 +411,15 @@ function WaveformIcon() {
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
       <path d="M1 11h3M18 11h3M5 7v8M8 4v14M11 8v6M14 5v12M17 7v8"
         stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ArrowIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M3 7.5h8M7.5 4l3.5 3.5-3.5 3.5"
+        stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

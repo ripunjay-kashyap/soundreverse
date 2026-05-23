@@ -39,8 +39,8 @@ export default function ConfidencePanel({ pipeline }) {
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <span className="font-mono" style={{ fontSize: 22, color, lineHeight: 1 }}>{pct}</span>
-            <span className="font-mono" style={{ fontSize: 8, color: 'var(--ink-4)', letterSpacing: '0.15em', marginTop: 3 }}>PCT</span>
+            <span className="display-num" style={{ fontSize: 30, color, lineHeight: 1 }}>{pct}</span>
+            <span className="font-mono" style={{ fontSize: 8, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '0.18em', marginTop: 4 }}>PCT</span>
           </div>
         </div>
 

@@ -18,6 +18,30 @@ class ResearcherResult(BaseModel):
     slug: str = Field(description="A URL-safe slugified version of track_id (e.g. 'humble_kendrick_lamar').")
     reasoning: str = Field(description="Brief explanation of why this link was chosen.")
 
+from urllib.parse import urlparse, parse_qs
+
+def _clean_youtube_url(url: str) -> str:
+    """Canonical https://www.youtube.com/watch?v=<id>.
+    Strips radio/mix/playlist/tracking params that make yt-dlp (and the
+    MCP server's downloader) fail. Returns input unchanged if no id found."""
+    if not url:
+        return url
+    try:
+        p = urlparse(url.strip())
+        host = p.netloc.lower()
+        vid = None
+        if "youtu.be" in host:
+            vid = p.path.lstrip("/").split("/")[0]
+        elif "youtube.com" in host:
+            vid = (parse_qs(p.query).get("v") or [None])[0]
+            if not vid and "/shorts/" in p.path:
+                vid = p.path.split("/shorts/")[1].split("/")[0]
+            if not vid and "/embed/" in p.path:
+                vid = p.path.split("/embed/")[1].split("/")[0]
+        return f"https://www.youtube.com/watch?v={vid}" if vid else url
+    except Exception:
+        return url
+
 def _slugify(text: str) -> str:
     text = text.lower()
     text = re.sub(r'[^a-z0-9]+', '_', text)
@@ -31,19 +55,24 @@ def researcher_node(state: "GraphState") -> "GraphState":
     if not user_input:
         return {**state, "error": "No user input provided to Researcher."}
 
+    # Clean the input if it's a YouTube URL
+    cleaned_input = _clean_youtube_url(user_input)
+
     ydl_opts = {
         'quiet': True,
         'extract_flat': True,
         'default_search': 'ytsearch3',
+        'socket_timeout': 10,  # 10s socket timeout
     }
     
     search_results = []
+    search_error = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # If input is a non-YouTube URL, force a search instead of extracting to avoid DRM issues
-            search_query = user_input
-            if user_input.startswith("http") and "youtube.com" not in user_input and "youtu.be" not in user_input:
-                search_query = f"ytsearch3:{user_input}"
+            search_query = cleaned_input
+            if cleaned_input.startswith("http") and "youtube.com" not in cleaned_input and "youtu.be" not in cleaned_input:
+                search_query = f"ytsearch3:{cleaned_input}"
                 
             info = ydl.extract_info(search_query, download=False)
             
@@ -58,9 +87,17 @@ def researcher_node(state: "GraphState") -> "GraphState":
                     "duration": entry.get("duration")
                 })
     except Exception as e:
-        print(f"yt-dlp warning: {str(e)}")
+        search_error = str(e)
+        print(f"yt-dlp warning: {search_error}")
 
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
+    # Fail loud if no search results found, preventing LLM hallucinations
+    if not search_results:
+        err_msg = "yt-dlp failed to find any search results."
+        if search_error:
+            err_msg += f" Details: {search_error}"
+        return {**state, "error": err_msg}
+
+    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
     
     system_prompt = (
         "You are an expert music researcher. Your goal is to find the OFFICIAL YouTube link for a given song or link from the search results provided. "
@@ -89,9 +126,12 @@ def researcher_node(state: "GraphState") -> "GraphState":
         tool_call = response.tool_calls[0]
         result = ResearcherResult.model_validate(tool_call["args"])
         
+        # Canonicalize the final chosen YouTube URL before saving
+        final_youtube_url = _clean_youtube_url(result.youtube_url)
+        
         return {
             **state,
-            "youtube_url": result.youtube_url,
+            "youtube_url": final_youtube_url,
             "researcher_metadata": {
                 "title": result.title,
                 "artist": result.artist,

@@ -80,3 +80,12 @@ cache/
 # Explicit scratch files at root
 inst.md
 update.log
+
+# PowerShell pip-redirect junk files
+=*
+
+# Empty notes file
+notes.txt
+
+# Graphify visualization folder
+graphify-out/

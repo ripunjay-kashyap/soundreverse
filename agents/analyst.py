@@ -192,7 +192,7 @@ def analyst_node(state: "GraphState") -> "GraphState":
 
     draft = _apply_rules(sig, rules, iteration_count, stress_test)
 
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
+    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
     try:
         bundle = _refine_reasons(sig, draft, critique, llm)
     except ServerError:

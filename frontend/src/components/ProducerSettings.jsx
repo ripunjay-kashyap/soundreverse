@@ -48,9 +48,9 @@ export default function ProducerSettings({ settings }) {
                 gridTemplateColumns: 'auto auto auto auto 1fr',
                 gap: '0 14px',
                 alignItems: 'center',
-                padding: '10px 14px',
-                background: 'var(--paper)',
-                borderRadius: 8,
+                padding: '11px 14px',
+                background: 'var(--surface)',
+                borderRadius: 'var(--r-inner)',
                 border: '1px solid var(--border)',
                 animationDelay: `${i * 0.06}s`,
               }}>
@@ -126,10 +126,10 @@ export default function ProducerSettings({ settings }) {
             MASTER GAIN
           </p>
           <div style={{ marginBottom: 8 }}>
-            <span className="font-mono" style={{ fontSize: 32, fontWeight: 400, color: gainColor(master_gain_db), lineHeight: 1 }}>
+            <span className="display-num" style={{ fontSize: 38, color: gainColor(master_gain_db), lineHeight: 1 }}>
               {master_gain_db > 0 ? '+' : ''}{master_gain_db}
             </span>
-            <span className="font-mono" style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 5 }}>dB</span>
+            <span className="font-mono" style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 6 }}>dB</span>
           </div>
           {master_gain_reason && (
             <p className="font-mono" style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-3)', lineHeight: 1.55 }}>
