@@ -14,8 +14,7 @@ from langchain_core.tracers.langchain import LangChainTracer
 from agents.critic import critic_node
 from agents.gateway import gateway_node
 from agents.analyst import analyst_node
-from agents.researcher import researcher_node
-from agents.mcp_mock import mcp_mock_node
+from agents.mcp import mcp_node
 from agents.musician import musician_node
 from output.generator import output_node
 from schemas.producer_settings import ProducerSettings
@@ -29,9 +28,9 @@ load_dotenv(override=True)
 # ── State ────────────────────────────────────────────────────────────────────
 
 class GraphState(TypedDict):
-    user_input:        str | None
-    youtube_url:       str | None
-    researcher_metadata: dict | None
+    audio_path:        str | None
+    audio_filename:    str | None
+    demo_track_id:     str | None
     raw_mcp_output:    dict | None
     track_request:     TrackRequest | None
     signal_signature:  SignalSignature | None
@@ -65,16 +64,14 @@ def _route_after_critic(state: GraphState) -> str:
 def build_graph() -> StateGraph:
     graph = StateGraph(GraphState)
 
-    graph.add_node("researcher", researcher_node)
-    graph.add_node("mcp_mock", mcp_mock_node)
+    graph.add_node("mcp", mcp_node)
     graph.add_node("gateway", gateway_node)
     graph.add_node("musician", musician_node)
     graph.add_node("analyst", analyst_node)
     graph.add_node("critic", critic_node)
 
-    graph.set_entry_point("researcher")
-    graph.add_edge("researcher", "mcp_mock")
-    graph.add_edge("mcp_mock", "gateway")
+    graph.set_entry_point("mcp")
+    graph.add_edge("mcp", "gateway")
     graph.add_edge("gateway", "musician")
     graph.add_edge("musician", "analyst")
     graph.add_edge("analyst", "critic")
@@ -100,13 +97,19 @@ def _capture_trace_url(tracer: LangChainTracer) -> str | None:
         return None
 
 
-def run(user_input: str, stress_test: bool = False, job_id: str | None = None) -> dict:
+def run(
+    audio_path: str | None = None,
+    audio_filename: str | None = None,
+    demo_track_id: str | None = None,
+    stress_test: bool = False,
+    job_id: str | None = None,
+) -> dict:
     app = build_graph()
 
     initial_state: GraphState = {
-        "user_input": user_input,
-        "youtube_url": None,
-        "researcher_metadata": None,
+        "audio_path": audio_path,
+        "audio_filename": audio_filename,
+        "demo_track_id": demo_track_id,
         "raw_mcp_output": None,
         "_track_id": "",
         "track_request": None,
@@ -158,7 +161,13 @@ def run(user_input: str, stress_test: bool = False, job_id: str | None = None) -
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SoundReverse — Producer Session Pack generator")
-    parser.add_argument("--track", required=True, help="Track ID (e.g. billie_jean_mj)")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--demo", help="Demo track id (e.g. billie_jean_mj)")
+    group.add_argument("--file", help="Path to a local mp3/wav file")
     args = parser.parse_args()
-    run(args.track)
+
+    if args.demo:
+        run(demo_track_id=args.demo)
+    else:
+        run(audio_path=args.file, audio_filename=Path(args.file).name)
 
