@@ -1,4 +1,5 @@
-# ── SoundReverse API — Koyeb-ready Dockerfile ────────────────────────────────
+# ── SoundReverse API — Docker image (for self-hosting / Docker-based deploys) ─
+# Render uses render.yaml runtime: python (native build), not this Dockerfile.
 # Python 3.11-slim keeps the image small; no audio libraries needed here
 # (Demucs/CLAP run inside the Modal-hosted MCP, never in this container).
 
@@ -31,7 +32,7 @@ RUN mkdir -p /tmp/soundreverse/outputs /tmp/soundreverse/uploads \
     && chown -R appuser:appgroup /tmp/soundreverse /app
 
 # ── Runtime environment defaults ──────────────────────────────────────────────
-# Koyeb env vars override these at deploy time (set them in the Koyeb dashboard).
+# Override at deploy time via your platform's env var dashboard.
 ENV OUTPUT_DIR=/tmp/soundreverse/outputs \
     UPLOAD_DIR=/tmp/soundreverse/uploads \
     ENV=production
@@ -39,7 +40,7 @@ ENV OUTPUT_DIR=/tmp/soundreverse/outputs \
 # ── Switch to non-root ────────────────────────────────────────────────────────
 USER appuser
 
-# ── Koyeb injects $PORT at runtime (defaults to 8000) ────────────────────────
+# ── Platform injects $PORT at runtime (defaults to 8000) ─────────────────────
 EXPOSE 8000
 
 # ── Liveness probe — matches GET /health in api.py ───────────────────────────

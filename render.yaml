@@ -22,7 +22,9 @@ services:
       - key: SONIC_MCP_URL
         sync: false
       - key: OUTPUT_DIR
-        value: /tmp/soundreverse
+        value: /tmp/soundreverse/outputs
+      - key: UPLOAD_DIR
+        value: /tmp/soundreverse/uploads
       - key: PRODUCTION
         value: "true"
       - key: CORS_ORIGINS
