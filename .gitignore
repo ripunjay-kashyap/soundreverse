@@ -76,6 +76,7 @@ cache/
 # Markdown docs — ignore scratch/temp .md files, keep project docs
 *.md
 !README.md
+!docs/**/*.md
 
 # Explicit scratch files at root
 inst.md
