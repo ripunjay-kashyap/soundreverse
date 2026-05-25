@@ -11,9 +11,6 @@ export default function TrackSelector({ tracks, selected, onChange }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="track-name">{t.label}</div>
           </div>
-          {t.stress_test && (
-            <span className="stress-badge" title="Stress test — triggers 2 iterations">⚡</span>
-          )}
         </button>
       ))}
     </div>

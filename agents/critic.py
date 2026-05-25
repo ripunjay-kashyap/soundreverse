@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 CONFIDENCE_THRESHOLD = 0.8
 MAX_ITERATIONS = 3
-MODEL = "gemini-3.1-flash-lite-preview"
+MODEL = "gemini-3.1-flash-lite"
 
 
 @retry(
@@ -151,7 +151,7 @@ def critic_node(state: "GraphState") -> "GraphState":
     confidence, validation_checks, failures = _run_checks(sig, settings)
 
     # LLM call: write a structured critique narrative the Analyst can act on
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
+    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
     try:
         bundle = _generate_critique(sig, settings, validation_checks, failures, llm)
     except ServerError:

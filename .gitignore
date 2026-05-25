@@ -73,10 +73,40 @@ frontend/.env.*.local
 # Project Cache
 cache/
 
-# Markdown docs — ignore scratch/temp .md files, keep project docs
+# Markdown docs — ignore scratch/temp .md files, keep README
 *.md
 !README.md
 
 # Explicit scratch files at root
 inst.md
 update.log
+
+# PowerShell pip-redirect junk files
+=*
+
+# Empty notes file
+notes.txt
+
+# Graphify visualization folder
+graphify-out/
+
+# AI assistant instructions (dev-only, not for public consumers)
+CLAUDE.md
+
+# Internal dev documentation (planning docs, design specs, superpowers workflows)
+docs/
+
+# Claude Code MCP server config (dev tooling, not app runtime)
+.mcp.json
+
+# Dev tool CLI folders
+.antigravitycli/
+
+# Temp / scratch folders
+tmp/
+
+# Historical dev planning notes
+plans/
+
+# Production env config (deploy-target-specific, not for repo)
+frontend/.env.production

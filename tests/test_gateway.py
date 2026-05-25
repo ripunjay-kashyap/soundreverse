@@ -1,10 +1,10 @@
+import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
 from agents.gateway import gateway_node
-
 
 BASE_STATE = {
     "track_request": None,
@@ -18,9 +18,18 @@ BASE_STATE = {
     "trace_url": None,
 }
 
+CACHE_DIR = Path(__file__).parent.parent / "cache"
+
 
 def test_cache_hit_loads_signal_signature():
-    state = gateway_node({**BASE_STATE, "_track_id": "blinding_lights_weeknd"})
+    cache_path = CACHE_DIR / "blinding_lights_weeknd.json"
+    raw_data = json.loads(cache_path.read_text(encoding="utf-8"))
+
+    state = gateway_node({
+        **BASE_STATE,
+        "_track_id": "blinding_lights_weeknd",
+        "raw_mcp_output": raw_data,
+    })
 
     assert state["error"] is None
     assert state["signal_signature"] is not None
@@ -30,9 +39,27 @@ def test_cache_hit_loads_signal_signature():
 
 
 def test_cache_miss_returns_error_without_crashing():
-    state = gateway_node({**BASE_STATE, "_track_id": "does_not_exist"})
+    # Pass invalid structure to trigger schema validation failure for the track_id
+    state = gateway_node({
+        **BASE_STATE,
+        "_track_id": "does_not_exist",
+        "raw_mcp_output": {"invalid_field": 123},
+    })
 
     assert state["error"] is not None
     assert "does_not_exist" in state["error"]
     assert state["final"] is True
     assert state["signal_signature"] is None
+
+
+def test_no_raw_mcp_output_returns_error():
+    state = gateway_node({
+        **BASE_STATE,
+        "_track_id": "some_track",
+        "raw_mcp_output": None,
+    })
+
+    assert state["error"] == "No raw_mcp_output provided to Gateway."
+    assert state["final"] is True
+    assert state["signal_signature"] is None
+

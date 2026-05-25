@@ -82,18 +82,18 @@ function DownloadPill({ href, label, ext, accent }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 8,
-        padding: '8px 16px',
+        padding: '9px 16px',
         background: s.bg,
         border: `1px solid ${s.border}`,
-        borderRadius: 8,
+        borderRadius: 'var(--r-inner)',
         textDecoration: 'none',
-        transition: 'box-shadow 0.2s',
+        transition: 'box-shadow 0.2s, transform 0.1s',
       }}
-      onMouseEnter={e => e.currentTarget.style.boxShadow = `0 2px 10px rgba(0,0,0,0.06)`}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = 'var(--shadow-sm)'}
       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
     >
       <DownloadIcon color={s.color} />
-      <span style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'DM Sans, sans-serif' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)' }}>{label}</span>
       <span className="font-mono" style={{
         fontSize: 9,
         color: s.color,

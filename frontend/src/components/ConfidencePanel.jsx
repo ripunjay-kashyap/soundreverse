@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 const R    = 40
 const CIRC = 2 * Math.PI * R  // ≈ 251
 
@@ -13,13 +15,21 @@ export default function ConfidencePanel({ pipeline }) {
   const color  = arcColor(confidence)
   const filled = CIRC * confidence
 
+  // Animate arc from 0 → filled on mount. The CSS transition on stroke-dasharray
+  // fires once we update from the initial 0 after a brief delay.
+  const [animFilled, setAnimFilled] = useState(0)
+  useEffect(() => {
+    const t = setTimeout(() => setAnimFilled(filled), 80)
+    return () => clearTimeout(t)
+  }, [filled])
+
   return (
     <div className="card-section anim-fade">
       <p className="eyebrow" style={{ marginBottom: 18 }}>Confidence Verdict</p>
 
       <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-        {/* Arc meter */}
+        {/* Arc meter — draws in from 0 */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <svg width="100" height="100" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r={R} fill="none" stroke="var(--border-mid)" strokeWidth="4" />
@@ -29,9 +39,9 @@ export default function ConfidencePanel({ pipeline }) {
               stroke={color}
               strokeWidth="4"
               strokeLinecap="round"
-              strokeDasharray={`${filled} ${CIRC}`}
+              strokeDasharray={`${animFilled} ${CIRC}`}
               transform="rotate(-90 50 50)"
-              style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.16,1,0.3,1)' }}
+              style={{ transition: 'stroke-dasharray 1.1s cubic-bezier(0.16,1,0.3,1)' }}
             />
           </svg>
           <div style={{
@@ -39,8 +49,8 @@ export default function ConfidencePanel({ pipeline }) {
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <span className="font-mono" style={{ fontSize: 22, color, lineHeight: 1 }}>{pct}</span>
-            <span className="font-mono" style={{ fontSize: 8, color: 'var(--ink-4)', letterSpacing: '0.15em', marginTop: 3 }}>PCT</span>
+            <span className="display-num" style={{ fontSize: 30, color, lineHeight: 1 }}>{pct}</span>
+            <span className="font-mono" style={{ fontSize: 8, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '0.18em', marginTop: 4 }}>PCT</span>
           </div>
         </div>
 

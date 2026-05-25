@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from agents.graph import GraphState
 
 RULES_PATH = Path(__file__).parent.parent / "rules" / "rules.yaml"
-MODEL = "gemini-3.1-flash-lite-preview"
+MODEL = "gemini-3.1-flash-lite"
 
 
 # ── Tool schema the LLM must call to return reasons ─────────────────────────
@@ -192,7 +192,7 @@ def analyst_node(state: "GraphState") -> "GraphState":
 
     draft = _apply_rules(sig, rules, iteration_count, stress_test)
 
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0)
+    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
     try:
         bundle = _refine_reasons(sig, draft, critique, llm)
     except ServerError:

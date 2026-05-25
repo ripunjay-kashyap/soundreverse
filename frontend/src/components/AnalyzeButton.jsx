@@ -1,6 +1,6 @@
-export default function AnalyzeButton({ loading, onClick }) {
+export default function AnalyzeButton({ loading, disabled, onClick }) {
   return (
-    <button className="analyze-btn" onClick={onClick} disabled={loading}>
+    <button className="analyze-btn" onClick={onClick} disabled={loading || disabled}>
       {loading ? (
         <>
           <Spinner />

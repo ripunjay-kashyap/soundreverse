@@ -7,8 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/analyze': 'http://127.0.0.1:8001',
+      '/demo':    'http://127.0.0.1:8001',
       '/tracks':  'http://127.0.0.1:8001',
       '/outputs': 'http://127.0.0.1:8001',
+      '/jobs':    'http://127.0.0.1:8001',
     },
   },
 })
