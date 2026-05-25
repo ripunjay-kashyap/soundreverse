@@ -1,10 +1,18 @@
 # SoundReverse — CLAUDE.md
 
+> ## ⏳ Active Work — File-Upload Pivot (READ FIRST)
+> **Branch:** `feature/file-upload-pivot`. Replacing YouTube ingestion with local mp3/wav upload → Modal MCP (+ 3 cached demo tracks). Full resume detail: `docs/superpowers/plans/2026-05-23-file-upload-pivot.md` → "Progress — RESUME HERE" and "Modal MCP — ANSWERED + SCHEMA BLOCKER".
+>
+> - **Done & committed:** Tasks 1–3 — deps (yt-dlp→requests); `agents/mcp.py` (demo + Modal client) + tests; graph rewired to `mcp` entry; `researcher.py`/`mcp_mock.py`/`test_researcher.py` deleted.
+> - **Done, NOT committed (in working tree):** Task 4 — `api.py` (multipart `/analyze`, `/demo`, 300s worker, 3 demos) + `requirements.txt` (`python-multipart`); this CLAUDE.md update. Commit msgs are in the plan's RESUME HERE.
+> - **⛔ Blocked on Modal:** Modal's payload is missing `stems` and uses a different shape (`header`/`sonic_signature`). The Modal agent is sending a reshaped, `SignalSignature`-shaped payload **with stems** — the user is bringing that answer into the next session.
+> - **▶ DO FIRST next session:** wire the Modal agent's answer into `agents/mcp.py` — fix the poll logic (processing = `status` `queued`/`running`; done/fail via `header.status`), add an adapter if Modal keeps its native shape, bump timeouts (poll 250→~540, worker 300→~560), and validate a real sample against `tests/test_mcp_contract.py`. **Then:** commit Task 4 + docs → Task 5 (api tests) → Task 6 (frontend wiring) → Task 7 (`.env MODAL_MCP_URL`) → Task 8 (e2e). Demo path works today; only the upload path is blocked.
+
 ## What This Project Is
 
-A LangGraph multi-agent system that takes a **song query** (e.g. "Humble by Kendrick Lamar") and outputs a Producer Session Pack (EQ settings, compression parameters, plain-language musician notes, agent reasoning trace). A Researcher agent resolves the query to an official YouTube URL, an MCP step produces the track's `SignalSignature`, a Musician agent derives plain-language notes from it, and the Gateway → Analyst → Critic loop turns that into producer settings.
+A LangGraph multi-agent system that takes an **uploaded audio file** (mp3/wav) — or one of 3 cached **demo tracks** — and outputs a Producer Session Pack (EQ settings, compression parameters, plain-language musician notes, agent reasoning trace). The MCP step produces the track's `SignalSignature`, a Musician agent derives plain-language notes from it, and the Gateway → Analyst → Critic loop turns that into producer settings.
 
-**Audio analysis runs in an external MCP server, not in this process.** Today that step is a **mock** (`agents/mcp_mock.py`) that returns one of 5 pre-cached `SignalSignature` JSON files; a **real MCP server hosted on Modal** is being integrated to replace it (returns the same `SignalSignature` shape from real audio). See `BACKEND_IMPROVEMENT_PLAN.md` for the integration plan.
+**Audio analysis runs in an external MCP server, not in this process.** For uploads, the `mcp_node` streams the file to a **real Modal-hosted MCP** (`POST /upload`, then polls `/jobs/{id}`) which runs the Demucs/CLAP analysis and returns the `SignalSignature`. For demo tracks it loads a pre-computed `SignalSignature` JSON from `cache/` (no network). **The YouTube/yt-dlp ingestion was removed** — datacenter IPs get bot-blocked after deploy (see `docs/superpowers/specs/2026-05-23-file-upload-pivot-design.md`).
 
 **Core rules:** No audio libraries in this repo (Demucs/Librosa/Essentia run inside the MCP server, never here). No Redis. Agents + LangGraph orchestration only.
 
@@ -22,13 +30,12 @@ soundreverse/
 │   ├── humble_kendrick.json
 │   └── blinding_lights_weeknd.json
 ├── agents/
-│   ├── researcher.py          ← yt-dlp search + Gemini → official YouTube URL, slug, metadata (+ _clean_youtube_url)
-│   ├── mcp_mock.py            ← MOCK MCP: matches song → cache file, emits raw_mcp_output (real Modal MCP replaces this)
+│   ├── mcp.py                 ← entry node: demo → load cache/{id}.json; upload → POST file to Modal /upload + poll /jobs/{id}
 │   ├── gateway.py             ← validates raw_mcp_output (from state) against SignalSignature → TrackRequest
 │   ├── musician.py            ← derives plain-language MusicianNotes (tuning targets + tonal tags) from the signature
 │   ├── analyst.py             ← applies rules.yaml in pure Python; LLM only writes the reason strings → ProducerSettings
 │   ├── critic.py              ← validates settings, loops max 3x
-│   └── graph.py               ← LangGraph orchestration (researcher→mcp_mock→gateway→musician→analyst→critic)
+│   └── graph.py               ← LangGraph orchestration (mcp→gateway→musician→analyst→critic)
 ├── schemas/
 │   ├── signal_signature.py    ← Pydantic model for cache JSON
 │   ├── track_request.py       ← Pydantic model for gateway output
@@ -40,11 +47,12 @@ soundreverse/
 │   └── generator.py           ← builds 2-page PDF + JSON preset + metadata; filenames prefixed by job_id (or track_id on CLI)
 ├── utils/
 │   └── supabase_client.py     ← lazy-singleton get_supabase() shared by api.py
-├── api.py                     ← FastAPI async job queue (Supabase-backed): POST /analyze → job_id, GET /jobs/{id}; + orphan reaper & output sweeper
+├── api.py                     ← FastAPI async job queue (Supabase-backed): POST /analyze (file upload), POST /demo, GET /jobs/{id}; + orphan reaper & output sweeper
 ├── .mcp.json                  ← Supabase MCP server (Claude Code tooling — NOT app runtime)
 ├── plans/                     ← design notes (researcher_agent_plan.md)
+├── docs/superpowers/          ← specs/ and plans/ (file-upload pivot spec + implementation plan)
 ├── BACKEND_IMPROVEMENT_PLAN.md ← production-readiness plan before real-MCP integration
-├── tests/                     ← pytest: analyst_rules, critic, gateway, output, researcher, mcp_contract
+├── tests/                     ← pytest: analyst_rules, critic, gateway, output, mcp, mcp_contract, api
 ├── frontend/                  ← React + Vite + Tailwind UI
 │   ├── src/
 │   │   ├── App.jsx
@@ -61,7 +69,7 @@ soundreverse/
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
-├── .env                       ← GOOGLE_API_KEY, LANGSMITH_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
+├── .env                       ← GOOGLE_API_KEY, LANGSMITH_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, MODAL_MCP_URL
 ├── render.yaml                 ← Render deploy config (backend)
 ├── requirements.txt
 └── README.md
@@ -72,9 +80,9 @@ soundreverse/
 ## Tech Stack
 
 - **Orchestration:** LangGraph (Python)
-- **LLM:** `gemini-3.1-flash-lite-preview` via `langchain-google-genai` — use this exact model string everywhere (defined as `MODEL` in analyst.py, critic.py, researcher.py, musician.py; also hardcoded in generator.py metadata)
-- **Song search:** `yt-dlp` (`ytsearch3`) in the Researcher agent
-- **Audio analysis:** external MCP server — **mock** today (`agents/mcp_mock.py`), **real server hosted on Modal** being integrated
+- **LLM:** `gemini-3.1-flash-lite-preview` via `langchain-google-genai` — use this exact model string everywhere (defined as `MODEL` in analyst.py, critic.py, musician.py; also hardcoded in generator.py metadata)
+- **Audio in:** local **mp3/wav upload** → Modal MCP (`POST /upload` binary, poll `/jobs/{id}`) via `requests` in `agents/mcp.py`; demo tracks load cached `SignalSignature` JSON
+- **Audio analysis:** external **Modal-hosted MCP** (real Demucs/CLAP); no audio libraries in this repo
 - **Schemas:** Pydantic v2
 - **Rules engine:** PyYAML
 - **PDF output:** fpdf2
@@ -88,25 +96,32 @@ soundreverse/
 
 ## API Contract
 
-The API is **asynchronous**: `/analyze` enqueues a job and returns immediately; the client **polls** `/jobs/{id}`. This is required because the analysis pipeline (yt-dlp + multiple Gemini calls + the Modal MCP at 20s–2min) far exceeds an HTTP request window.
+The API is **asynchronous**: `/analyze` and `/demo` enqueue a job and return immediately; the client **polls** `/jobs/{id}`. This is required because the analysis pipeline (Modal upload + analysis + multiple Gemini calls, ~70–95s, longer on a cold Modal container) far exceeds an HTTP request window.
 
-### POST /analyze  → `202 Accepted`
+### POST /analyze  → `202 Accepted`  (file upload)
+`multipart/form-data` with a `file` field (mp3/wav, ≤50 MB). Streams the file to a temp path, inserts a Supabase `jobs` row (`status: "pending"`), runs the graph in the background.
 ```json
-// Request
-{ "user_input": "Humble by Kendrick Lamar" }
-
 // Response
 { "job_id": "uuid" }
 ```
-Inserts a row into the Supabase `jobs` table (`status: "pending"`) and runs the graph in the background (`status: pending → processing → completed | failed`).
+Errors: `415` (not mp3/wav), `413` (>50 MB).
+
+### POST /demo  → `202 Accepted`  (cached track, no Modal)
+```json
+// Request
+{ "track_id": "humble_kendrick" }
+// Response
+{ "job_id": "uuid" }
+```
+`404` if `track_id` is not one of the 3 demos.
 
 ### GET /jobs/{job_id}
 ```json
 // completed
 { "job_id": "uuid", "status": "completed", "result": {
-    "track":    { "title": "...", "artist": "...", "lufs": -6.8, "bpm": 150.0, "key": "Eb Minor", "youtube_url": "..." },
+    "track":    { "title": "...", "artist": "...", "lufs": -6.8, "bpm": 150.0, "key": "Eb Minor" },
     "pipeline": { "confidence": 1.0, "iteration_count": 2, "max_iterations": 3,
-                  "critic_rounds": [...], "validation_checks": [...], "researcher_reasoning": "..." },
+                  "critic_rounds": [...], "validation_checks": [...] },
     "settings":  { "eq": [...], "compression": {...}, "compression_skip_reason": "...",
                    "master_gain_db": 0, "master_gain_reason": "..." },
     "musician":  { "tuning_targets": [...], "tuning_tip": "...", "tonal_tags": [...], "tonal_character": "..." },
@@ -120,7 +135,7 @@ Inserts a row into the Supabase `jobs` table (`status: "pending"`) and runs the 
 ```
 
 ### GET /tracks
-Returns `{ track_id, label, stress_test }` for the 5 demo tracks (used by the frontend's suggestions).
+Returns `{ track_id, label, stress_test }` for the 3 demo tracks (used by the frontend's "Or try a demo" list).
 
 ### GET /outputs/{filename}
 Serves generated files as static downloads, prefixed by `job_id` (e.g. `{job_id}_blueprint.pdf`). **Note:** these live on local disk and, in production (`ENV=production`/`PRODUCTION=true`), a background sweeper deletes files older than 1h every 15 min; they don't survive restarts — planned move to Supabase Storage (see `BACKEND_IMPROVEMENT_PLAN.md` §2A). On startup an **orphan reaper** marks any `pending`/`processing` job older than 10 min as `failed`.
@@ -133,8 +148,9 @@ Serves generated files as static downloads, prefixed by `job_id` (e.g. `{job_id}
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the full agent graph (CLI) — --track is a free-text song query fed to the Researcher
-python -m agents.graph --track "Humble by Kendrick Lamar"
+# Run the full agent graph (CLI)
+python -m agents.graph --demo humble_kendrick        # cached demo track (no Modal)
+python -m agents.graph --file path/to/song.mp3       # local upload → Modal MCP (needs MODAL_MCP_URL)
 
 # Launch FastAPI backend (use venv python directly on Windows)
 venv/Scripts/python -m uvicorn api:app --reload --port 8001
@@ -156,25 +172,19 @@ pytest tests/ -v
 ### The Flow
 
 ```
-Researcher → MCP (mock) → Gateway → Musician → Analyst → Critic → OUTPUT
-                                                   ↑_________↓
-                                                (max 3 loops)
+Upload / Demo → MCP → Gateway → Musician → Analyst → Critic → OUTPUT
+                                              ↑_________↓
+                                           (max 3 loops)
 ```
 
 `output_node` runs **outside** the graph (called in `run()` after `app.invoke()`), so the real LangSmith trace URL is available before generating files.
 
-### Researcher Agent (`agents/researcher.py`)
+### MCP Node (`agents/mcp.py`) — entry point
 
-- Receives `state["user_input"]` (a free-text song query or a URL)
-- Uses `yt-dlp` (`ytsearch3`) to find candidates, then `gemini-3.1-flash-lite-preview` (tool-call → `ResearcherResult`) to pick the **official** channel/Topic upload
-- Returns `youtube_url`, `researcher_metadata` (title, artist, slug, reasoning) into state
-- Generates a slugified `track_id` (e.g. `humble_kendrick_lamar`)
-- `_clean_youtube_url()` strips radio/`list=RD…`/`start_radio` params that break yt-dlp and the MCP downloader — applied to both the raw input and the resolved URL
-
-### MCP Step (`agents/mcp_mock.py` → real Modal server)
-
-- **Mock (today):** substring-matches the researched title/artist/slug to one of 5 cache files (defaults to `billie_jean_mj`), loads it, and emits `raw_mcp_output` (a dict conforming to `SignalSignature`) + `_track_id` into state
-- **Real (being integrated):** a Modal-hosted service that takes the clean `youtube_url`, performs actual audio analysis, and returns the **same** `raw_mcp_output` shape. The Gateway contract is the swap point — keep it stable.
+- **Demo branch** (`state["demo_track_id"]`): loads `cache/{track_id}.json` → `raw_mcp_output` + `_track_id`. No network.
+- **Upload branch** (`state["audio_path"]`): streams the file to `${MODAL_MCP_URL}/upload` (raw bytes, `X-Filename` header) → gets a Modal job id → polls `${MODAL_MCP_URL}/jobs/{id}` (~3s interval, ~250s deadline) until the `SignalSignature` JSON is ready. The uploaded **filename (minus extension) becomes the display title**; `track_id` is its slug.
+- Modal status vocab is `"success"`; the poll is treated as done when the payload carries the signature keys (`master`/`stems`/`rhythm`). Transient connection/5xx errors get ~2 `tenacity` retries; any failure sets `error` + `final`.
+- The **Gateway contract (`raw_mcp_output` → `SignalSignature`) is the swap point** — both branches must produce that shape.
 
 ### Gateway Agent (`agents/gateway.py`)
 
@@ -213,9 +223,10 @@ Researcher → MCP (mock) → Gateway → Musician → Analyst → Critic → OU
 
 ### Graph (`agents/graph.py`)
 
-- Built with LangGraph `StateGraph`; entry point is `researcher`
-- `GraphState` includes: `user_input`, `youtube_url`, `researcher_metadata`, `raw_mcp_output`, `_track_id`, `track_request`, `signal_signature`, `musician_notes`, `producer_settings`, `iteration_count`, `confidence`, `critique`, `critique_history`, `critic_rounds`, `validation_checks`, `final`, `error`, `trace_url`, `stress_test`, `job_id`
-- Edges: Researcher → MCP(mock) → Gateway → Musician → Analyst → Critic → (conditional: loop back to Analyst OR END; `output_node` then runs outside the graph)
+- Built with LangGraph `StateGraph`; entry point is `mcp`
+- `GraphState` includes: `audio_path`, `audio_filename`, `demo_track_id`, `raw_mcp_output`, `_track_id`, `track_request`, `signal_signature`, `musician_notes`, `producer_settings`, `iteration_count`, `confidence`, `critique`, `critique_history`, `critic_rounds`, `validation_checks`, `final`, `error`, `trace_url`, `stress_test`, `job_id`
+- Edges: MCP → Gateway → Musician → Analyst → Critic → (conditional: loop back to Analyst OR END; `output_node` then runs outside the graph)
+- `run(audio_path=None, audio_filename=None, demo_track_id=None, stress_test=False, job_id=None)`; CLI: `--demo <id>` or `--file <path>`
 - LangSmith tracing must be enabled via environment variable — every run produces a shareable URL
 
 ---
@@ -402,19 +413,22 @@ Every run must log to LangSmith. The trace URL must be captured after graph exec
 
 ## Frontend (`frontend/`)
 
-React + Vite + Tailwind (Tailwind v4 via `@tailwindcss/vite`; design tokens live in `src/index.css`). Calls `POST /analyze` then polls `GET /jobs/{id}` every 3s. In dev, `vite.config.js` proxies `/analyze`, `/jobs`, `/tracks`, `/outputs` to `127.0.0.1:8001`. Components: `TrackSelector`, `FileUpload` (frontend-only audio dropzone — captures into local state; **no upload endpoint yet**, awaiting the real MCP), `AnalyzeButton`, `SignalSummary`, `MusicianNotes`, `ConfidencePanel`, `CriticTimeline`, `ProducerSettings`, `OutputDownloads`. (The old Gradio `ui/app.py` has been replaced by this React app.)
+React + Vite + Tailwind (Tailwind v4 via `@tailwindcss/vite`; design tokens live in `src/index.css`). Input column is **upload-primary**: `FileUpload` (drag-drop mp3/wav) posts `multipart` to `POST /analyze`; `TrackSelector` lists the 3 demos and posts `POST /demo {track_id}`. Then polls `GET /jobs/{id}` every 3s. In dev, `vite.config.js` proxies `/analyze`, `/demo`, `/jobs`, `/tracks`, `/outputs` to `127.0.0.1:8001`. Components: `FileUpload`, `TrackSelector`, `AnalyzeButton`, `SignalSummary`, `MusicianNotes`, `ConfidencePanel`, `CriticTimeline`, `ProducerSettings`, `OutputDownloads`.
+
+> **Status:** the frontend wiring (remove the old YouTube search bar, lift the uploaded `File` to `App`, post to `/analyze` vs `/demo`) is **Task 6 of the pivot plan — not yet implemented.** See `docs/superpowers/plans/2026-05-23-file-upload-pivot.md`.
 
 ---
 
 ## What Claude Should Never Do
 
-- Run audio libraries (Demucs/Librosa/Essentia) **in this repo** — audio analysis belongs in the external MCP server (mock today, Modal-hosted real server being integrated)
+- Run audio libraries (Demucs/Librosa/Essentia) **in this repo** — audio analysis belongs in the external Modal-hosted MCP
+- **Reintroduce yt-dlp / any YouTube ingestion** — datacenter IPs are bot-blocked after deploy; input is local upload (or cached demo). See `docs/superpowers/specs/2026-05-23-file-upload-pivot-design.md`
 - Use Redis
 - Parse LLM free text to extract ProducerSettings — use structured output / tool calls
 - Let the Analyst LLM pick settings or change numbers — rules are applied in pure Python (`_apply_rules`); the LLM only writes `reason` strings
 - Allow iteration_count to exceed 3 under any circumstance
 - Use any model other than `gemini-3.1-flash-lite-preview`
-- Change the Gateway's `raw_mcp_output` → `SignalSignature` contract without updating the MCP contract (it is the real-MCP swap point)
+- Change the Gateway's `raw_mcp_output` → `SignalSignature` contract without updating the Modal MCP contract (it is the swap point both the demo and upload branches must satisfy)
 
 ---
 
@@ -422,5 +436,7 @@ React + Vite + Tailwind (Tailwind v4 via `@tailwindcss/vite`; design tokens live
 
 For more detail on specific parts of the system, read these files before working on them:
 
-- `plans/researcher_agent_plan.md` — Researcher + Mock MCP design notes
-- `BACKEND_IMPROVEMENT_PLAN.md` — production-readiness fixes required before real-MCP integration
+- `docs/superpowers/specs/2026-05-23-file-upload-pivot-design.md` — the file-upload pivot design (why YouTube was removed, Modal contract, error handling)
+- `docs/superpowers/plans/2026-05-23-file-upload-pivot.md` — the implementation plan (task-by-task; current progress tracked there)
+- `BACKEND_IMPROVEMENT_PLAN.md` — production-readiness fixes
+- `plans/researcher_agent_plan.md` — **historical** (Researcher + Mock MCP; both removed in the pivot)
