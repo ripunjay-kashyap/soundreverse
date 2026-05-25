@@ -6,7 +6,7 @@
 > - **Done & committed:** Tasks 1–3 — deps (yt-dlp→requests); `agents/mcp.py` (demo + Modal client) + tests; graph rewired to `mcp` entry; `researcher.py`/`mcp_mock.py`/`test_researcher.py` deleted.
 > - **Done, NOT committed (in working tree):** Task 4 — `api.py` (multipart `/analyze`, `/demo`, 300s worker, 3 demos) + `requirements.txt` (`python-multipart`); this CLAUDE.md update. Commit msgs are in the plan's RESUME HERE.
 > - **⛔ Blocked on Modal:** Modal's payload is missing `stems` and uses a different shape (`header`/`sonic_signature`). The Modal agent is sending a reshaped, `SignalSignature`-shaped payload **with stems** — the user is bringing that answer into the next session.
-> - **▶ DO FIRST next session:** wire the Modal agent's answer into `agents/mcp.py` — fix the poll logic (processing = `status` `queued`/`running`; done/fail via `header.status`), add an adapter if Modal keeps its native shape, bump timeouts (poll 250→~540, worker 300→~560), and validate a real sample against `tests/test_mcp_contract.py`. **Then:** commit Task 4 + docs → Task 5 (api tests) → Task 6 (frontend wiring) → Task 7 (`.env MODAL_MCP_URL`) → Task 8 (e2e). Demo path works today; only the upload path is blocked.
+> - **▶ Next:** Tasks 1–6 + animations all committed. Add `SONIC_MCP_URL=https://ripun-j-kashyap--audio-sonic-mcp-mcp-server.modal.run` to `.env` (Task 7), then run upload e2e (Task 8). Demo path works today; upload path needs `SONIC_MCP_URL` in env.
 
 ## What This Project Is
 
@@ -69,7 +69,7 @@ soundreverse/
 │   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
-├── .env                       ← GOOGLE_API_KEY, LANGSMITH_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, MODAL_MCP_URL
+├── .env                       ← GOOGLE_API_KEY, LANGSMITH_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SONIC_MCP_URL
 ├── render.yaml                 ← Render deploy config (backend)
 ├── requirements.txt
 └── README.md
@@ -150,7 +150,7 @@ pip install -r requirements.txt
 
 # Run the full agent graph (CLI)
 python -m agents.graph --demo humble_kendrick        # cached demo track (no Modal)
-python -m agents.graph --file path/to/song.mp3       # local upload → Modal MCP (needs MODAL_MCP_URL)
+python -m agents.graph --file path/to/song.mp3       # local upload → Modal MCP (needs SONIC_MCP_URL)
 
 # Launch FastAPI backend (use venv python directly on Windows)
 venv/Scripts/python -m uvicorn api:app --reload --port 8001
@@ -182,7 +182,7 @@ Upload / Demo → MCP → Gateway → Musician → Analyst → Critic → OUTPUT
 ### MCP Node (`agents/mcp.py`) — entry point
 
 - **Demo branch** (`state["demo_track_id"]`): loads `cache/{track_id}.json` → `raw_mcp_output` + `_track_id`. No network.
-- **Upload branch** (`state["audio_path"]`): streams the file to `${MODAL_MCP_URL}/upload` (raw bytes, `X-Filename` header) → gets a Modal job id → polls `${MODAL_MCP_URL}/jobs/{id}` (~3s interval, ~250s deadline) until the `SignalSignature` JSON is ready. The uploaded **filename (minus extension) becomes the display title**; `track_id` is its slug.
+- **Upload branch** (`state["audio_path"]`): streams the file to `${SONIC_MCP_URL}/upload` (raw bytes, `X-Filename` header) → gets a Modal job id → polls `${SONIC_MCP_URL}/jobs/{id}` (~3s interval, ~250s deadline) until the `SignalSignature` JSON is ready. The uploaded **filename (minus extension) becomes the display title**; `track_id` is its slug.
 - Modal status vocab is `"success"`; the poll is treated as done when the payload carries the signature keys (`master`/`stems`/`rhythm`). Transient connection/5xx errors get ~2 `tenacity` retries; any failure sets `error` + `final`.
 - The **Gateway contract (`raw_mcp_output` → `SignalSignature`) is the swap point** — both branches must produce that shape.
 

@@ -19,7 +19,7 @@ SIGNATURE_KEYS = ("master", "stems", "rhythm")
 
 
 def _modal_base() -> str:
-    return os.getenv("MODAL_MCP_URL", "").rstrip("/")
+    return os.getenv("SONIC_MCP_URL", "").rstrip("/")
 
 
 def _slugify(text: str) -> str:
@@ -85,7 +85,7 @@ def _modal_poll(modal_job_id: str) -> dict:
 
 def _analyze_upload(audio_path: str, filename: str) -> dict:
     if not _modal_base():
-        raise RuntimeError("MODAL_MCP_URL is not configured.")
+        raise RuntimeError("SONIC_MCP_URL is not configured.")
     modal_job_id = _modal_upload(audio_path, filename)
     sig = _modal_poll(modal_job_id)
     # The uploaded filename is the source of truth for the display title.

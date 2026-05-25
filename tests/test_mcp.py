@@ -31,7 +31,7 @@ def test_extract_signature_detects_shape():
 
 
 def test_upload_branch_posts_and_polls(monkeypatch):
-    monkeypatch.setenv("MODAL_MCP_URL", "https://fake.modal.run")
+    monkeypatch.setenv("SONIC_MCP_URL", "https://fake.modal.run")
     sig = _valid_signature()
     calls = {"uploaded": False}
 
@@ -56,7 +56,7 @@ def test_upload_branch_posts_and_polls(monkeypatch):
 
 
 def test_upload_branch_modal_failure_sets_error(monkeypatch):
-    monkeypatch.setenv("MODAL_MCP_URL", "https://fake.modal.run")
+    monkeypatch.setenv("SONIC_MCP_URL", "https://fake.modal.run")
 
     def fake_upload(path, filename):
         return "file_x"
