@@ -23,7 +23,9 @@ def test_demo_branch_loads_cache():
 
 
 def test_extract_signature_detects_shape():
-    assert mcp._extract_signature({"status": "processing"}) is None
+    assert mcp._extract_signature({"status": "processing"}) is None   # keep existing
+    assert mcp._extract_signature({"status": "queued"})    is None    # Modal in-progress
+    assert mcp._extract_signature({"status": "running"})   is None    # Modal in-progress
     sig = _valid_signature()
     assert mcp._extract_signature(sig) is not None
 

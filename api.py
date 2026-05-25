@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -119,6 +119,12 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(Path(__file__).parent / "output"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent / "tmp")))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024            # 50 MB
+ALLOWED_EXTS = {".mp3", ".wav"}
+
 # ── Supabase client alias ─────────────────────────────────────────────────────
 
 _get_supabase = get_supabase
@@ -127,18 +133,17 @@ _get_supabase = get_supabase
 # ── Track registry ────────────────────────────────────────────────────────────
 
 TRACKS = [
-    {"track_id": "billie_jean_mj",         "label": "Billie Jean — Michael Jackson",  "stress_test": False},
-    {"track_id": "one_more_time_daft_punk", "label": "One More Time — Daft Punk",      "stress_test": False},
-    {"track_id": "clocks_coldplay",         "label": "Clocks — Coldplay",              "stress_test": False},
-    {"track_id": "humble_kendrick",         "label": "HUMBLE. — Kendrick Lamar",       "stress_test": True},
-    {"track_id": "blinding_lights_weeknd",  "label": "Blinding Lights — The Weeknd",   "stress_test": False},
+    {"track_id": "billie_jean_mj",         "label": "Billie Jean — Michael Jackson", "stress_test": False},
+    {"track_id": "humble_kendrick",        "label": "HUMBLE. — Kendrick Lamar",      "stress_test": True},
+    {"track_id": "blinding_lights_weeknd", "label": "Blinding Lights — The Weeknd",  "stress_test": False},
 ]
+TRACKS_BY_ID = {t["track_id"]: t for t in TRACKS}
 
 
 # ── Request model ─────────────────────────────────────────────────────────────
 
-class AnalyzeRequest(BaseModel):
-    user_input: str
+class DemoRequest(BaseModel):
+    track_id: str
 
 
 # ── Background worker ─────────────────────────────────────────────────────────
@@ -147,30 +152,27 @@ def _build_result_payload(state: dict, api_base: str = "") -> dict:
     sig             = state["signal_signature"]
     settings        = state["producer_settings"]
     meta            = sig.metadata if sig else {}
-    researcher_meta = state.get("researcher_metadata", {})
     musician_notes  = state.get("musician_notes")
     track_id        = state.get("_track_id", "unknown")
     job_id          = state.get("job_id")
-    
+
     # Use job_id for namespacing filenames if present to avoid overwrite conflicts
     prefix = job_id if job_id else track_id
 
     return {
         "track": {
-            "title":       researcher_meta.get("title") or meta.get("title", track_id),
-            "artist":      researcher_meta.get("artist") or meta.get("artist", ""),
-            "lufs":        sig.master.lufs  if sig else None,
-            "bpm":         sig.rhythm.bpm   if sig else None,
-            "key":         sig.rhythm.key   if sig else None,
-            "youtube_url": state.get("youtube_url"),
+            "title":  meta.get("title", track_id),
+            "artist": meta.get("artist", ""),
+            "lufs":   sig.master.lufs if sig else None,
+            "bpm":    sig.rhythm.bpm if sig else None,
+            "key":    sig.rhythm.key if sig else None,
         },
         "pipeline": {
-            "confidence":           state["confidence"],
-            "iteration_count":      state["iteration_count"],
-            "max_iterations":       3,
-            "critic_rounds":        state.get("critic_rounds", []),
-            "validation_checks":    state.get("validation_checks", []),
-            "researcher_reasoning": researcher_meta.get("reasoning"),
+            "confidence":        state["confidence"],
+            "iteration_count":   state["iteration_count"],
+            "max_iterations":    3,
+            "critic_rounds":     state.get("critic_rounds", []),
+            "validation_checks": state.get("validation_checks", []),
         },
         "settings":  settings.model_dump() if settings else None,
         "musician":  musician_notes.model_dump() if musician_notes else None,
@@ -183,60 +185,64 @@ def _build_result_payload(state: dict, api_base: str = "") -> dict:
     }
 
 
-async def _run_job(job_id: str, user_input: str, stress_test: bool, api_base: str) -> None:
+async def _run_job(
+    job_id: str,
+    api_base: str,
+    *,
+    audio_path: str | None = None,
+    audio_filename: str | None = None,
+    demo_track_id: str | None = None,
+    stress_test: bool = False,
+) -> None:
+    # TODO(live-progress): wire Modal's real /jobs stage into a `stage` column and
+    # surface it in GET /jobs/{id} so the loader shows true progress (deferred — V2).
     sb = get_supabase()
     try:
         now_iso = datetime.now(timezone.utc).isoformat()
-        sb.table("jobs").update({
-            "status": "processing",
-            "updated_at": now_iso
-        }).eq("id", job_id).execute()
+        sb.table("jobs").update({"status": "processing", "updated_at": now_iso}).eq("id", job_id).execute()
 
-        # TODO(mcp-integration): real per-stage progress for the frontend loader.
-        # The frontend currently cycles stage captions on a timer (cosmetic only).
-        # To make it truthful once the Modal MCP is wired in (the slow step):
-        #   1. Add a nullable `stage` text column to the `jobs` table.
-        #   2. Pass an `on_stage(name)` callback into run_graph and invoke it from each
-        #      LangGraph node (researcher / mcp / gateway / musician / analyst / critic),
-        #      e.g. via LangGraph's streaming/callbacks, writing:
-        #         sb.table("jobs").update({"stage": name}).eq("id", job_id).execute()
-        #   3. Surface `stage` in GET /jobs/{id} (see placeholder there) and have the
-        #      frontend poll drive the caption instead of the timer.
-        # Run the graph synchronously in a background thread with a 180s timeout
+        # Run the graph in a background thread; covers Modal cold start + analysis + LLM.
         state = await asyncio.wait_for(
-            asyncio.to_thread(run_graph, user_input, stress_test, job_id),
-            timeout=180.0
+            asyncio.to_thread(
+                run_graph,
+                audio_path,
+                audio_filename,
+                demo_track_id,
+                stress_test,
+                job_id,
+            ),
+            timeout=560.0,
         )
 
         now_iso = datetime.now(timezone.utc).isoformat()
         if state.get("error"):
             sb.table("jobs").update({
-                "status":        "failed",
-                "error_message": state["error"],
-                "updated_at":    now_iso
+                "status": "failed", "error_message": state["error"], "updated_at": now_iso
             }).eq("id", job_id).execute()
             return
 
         sb.table("jobs").update({
-            "status":         "completed",
+            "status": "completed",
             "result_payload": _build_result_payload(state, api_base),
-            "updated_at":    now_iso
+            "updated_at": now_iso,
         }).eq("id", job_id).execute()
 
     except asyncio.TimeoutError:
         now_iso = datetime.now(timezone.utc).isoformat()
         sb.table("jobs").update({
-            "status":        "failed",
-            "error_message": "Analysis timed out after 180 seconds.",
-            "updated_at":    now_iso
+            "status": "failed", "error_message": "Analysis timed out after 560 seconds.", "updated_at": now_iso
         }).eq("id", job_id).execute()
     except Exception as exc:
         now_iso = datetime.now(timezone.utc).isoformat()
         sb.table("jobs").update({
-            "status":        "failed",
-            "error_message": str(exc),
-            "updated_at":    now_iso
+            "status": "failed", "error_message": str(exc), "updated_at": now_iso
         }).eq("id", job_id).execute()
+    finally:
+        if audio_path:
+            try:
+                Path(audio_path).unlink(missing_ok=True)
+            except Exception as e:
+                print(f"[Upload cleanup] Failed to delete {audio_path}: {e}")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -247,21 +253,57 @@ def get_tracks():
 
 
 @app.post("/analyze", status_code=202)
-async def analyze(req: AnalyzeRequest, background_tasks: BackgroundTasks):
-    stress_test = "humble" in req.user_input.lower()
-    job_id      = str(uuid.uuid4())
+async def analyze(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=415, detail="Unsupported file type. Upload an mp3 or wav.")
+
+    job_id = str(uuid.uuid4())
+    audio_path = UPLOAD_DIR / f"{job_id}_input{ext}"
+
+    # Stream to disk in chunks; enforce the size cap without buffering the whole file.
+    size = 0
+    with open(audio_path, "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                out.close()
+                audio_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="File too large. Max 50 MB.")
+            out.write(chunk)
 
     sb = get_supabase()
     sb.table("jobs").insert({
-        "id":          job_id,
-        "status":      "pending",
-        "user_input":  req.user_input,
-        "stress_test": stress_test,
+        "id": job_id, "status": "pending", "user_input": file.filename, "stress_test": False,
     }).execute()
 
     api_base = os.getenv("API_BASE_URL", "")
-    background_tasks.add_task(_run_job, job_id, req.user_input, stress_test, api_base)
+    background_tasks.add_task(
+        _run_job, job_id, api_base,
+        audio_path=str(audio_path), audio_filename=file.filename, stress_test=False,
+    )
+    return {"job_id": job_id}
 
+
+@app.post("/demo", status_code=202)
+async def demo(req: DemoRequest, background_tasks: BackgroundTasks):
+    track = TRACKS_BY_ID.get(req.track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail=f"Unknown demo track: {req.track_id}")
+
+    job_id = str(uuid.uuid4())
+    stress_test = track["stress_test"]
+
+    sb = get_supabase()
+    sb.table("jobs").insert({
+        "id": job_id, "status": "pending", "user_input": req.track_id, "stress_test": stress_test,
+    }).execute()
+
+    api_base = os.getenv("API_BASE_URL", "")
+    background_tasks.add_task(
+        _run_job, job_id, api_base,
+        demo_track_id=req.track_id, stress_test=stress_test,
+    )
     return {"job_id": job_id}
 
 

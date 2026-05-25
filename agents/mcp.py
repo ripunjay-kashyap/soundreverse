@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 
 POLL_INTERVAL_S = 3.0
-POLL_DEADLINE_S = 250.0          # stay under api.py's 300s worker timeout
+POLL_DEADLINE_S = 540.0          # cold start ~180s + margin; stays under 560s worker timeout
 SIGNATURE_KEYS = ("master", "stems", "rhythm")
 
 
@@ -38,8 +38,14 @@ def _extract_signature(payload: dict) -> dict | None:
 
 
 def _is_failed(payload: dict) -> bool:
-    status = (payload.get("status") or "").lower() if isinstance(payload, dict) else ""
-    return status in {"failed", "error"}
+    if not isinstance(payload, dict):
+        return False
+    top_status = (payload.get("status") or "").lower()
+    if top_status in {"failed", "error"}:
+        return True
+    # defensive: cover old wrapper shape {"header": {"status": "error"}}
+    header_status = (payload.get("header") or {}).get("status", "")
+    return str(header_status).lower() in {"failed", "error"}
 
 
 @retry(
