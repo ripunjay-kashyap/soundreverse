@@ -125,6 +125,15 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024            # 50 MB
 ALLOWED_EXTS = {".mp3", ".wav"}
 
+# ── Health check (Koyeb / load-balancer probe) ────────────────────────────────
+
+from fastapi.responses import JSONResponse
+
+@app.get("/health")
+async def health():
+    """Lightweight liveness probe — returns 200 as soon as the process is up."""
+    return JSONResponse({"status": "ok", "version": "2.0.0"})
+
 # ── Supabase client alias ─────────────────────────────────────────────────────
 
 _get_supabase = get_supabase
