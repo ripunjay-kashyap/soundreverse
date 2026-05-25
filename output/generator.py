@@ -407,7 +407,7 @@ def output_node(state: "GraphState") -> "GraphState":
             "gateway": {"source": "cache", "latency_ms": None},
             "analyst": {
                 "iterations": state["iteration_count"],
-                "model": "gemini-3.1-flash-lite-preview",
+                "model": "gemini-3.1-flash-lite",
                 "latency_ms": None,
             },
             "critic": {"rounds": state.get("critic_rounds", [])},

@@ -13,7 +13,7 @@ from schemas.musician_notes import MusicianNotes, TuningTarget
 if TYPE_CHECKING:
     from agents.graph import GraphState
 
-MODEL = "gemini-3.1-flash-lite-preview"
+MODEL = "gemini-3.1-flash-lite"
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
