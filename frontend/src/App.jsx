@@ -123,7 +123,7 @@ export default function App() {
         <div className="divider" style={{ margin: '0 24px' }} />
 
         {/* Track list */}
-        <div style={{ padding: '20px 16px', flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: '20px 16px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Upload a Track</p>
           <div style={{ marginBottom: 20 }}>
             <FileUpload onFileChange={(f) => { setUploadedFile(f); if (f) setSelectedDemo('') }} />
@@ -131,6 +131,11 @@ export default function App() {
 
           <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or try a demo</p>
           <TrackSelector tracks={tracks} selected={selectedDemo} onChange={(id) => { setSelectedDemo(id); setUploadedFile(null) }} />
+
+          {/* Decorative spectrum — sits below the track list */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', paddingTop: 24, paddingBottom: 4 }}>
+            <SidebarSpectrum />
+          </div>
         </div>
 
         {/* Analyze + footer */}
@@ -223,7 +228,7 @@ function EmptyState() {
       overflow: 'hidden',
     }}>
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{
+        <div className="pulse-breathe" style={{
           width: 56,
           height: 56,
           borderRadius: '50%',
@@ -307,9 +312,9 @@ function LoadingState({ label }) {
 
   return (
     <div className="loading-state anim-fade">
-      <BigSpinner />
+      <WaveformViz />
       <h2 className="font-brand" style={{
-        margin: '20px 0 0',
+        margin: '16px 0 0',
         fontSize: 24,
         fontWeight: 600,
         color: 'var(--ink-2)',
@@ -323,20 +328,16 @@ function LoadingState({ label }) {
         </p>
       )}
 
-      <div className="progress-track">
-        <div className="progress-bar" />
-      </div>
-
       <p
         key={stage}
         className="eyebrow anim-fade"
-        style={{ marginTop: 18, color: 'var(--ink-4)', opacity: 0.9 }}
+        style={{ marginTop: 24, color: 'var(--ink-4)', opacity: 0.9 }}
       >
         {LOADING_STAGES[stage]}
       </p>
 
       <p style={{
-        margin: '16px 0 0',
+        margin: '14px 0 0',
         fontSize: 12.5,
         color: 'var(--ink-4)',
         lineHeight: 1.6,
@@ -348,19 +349,43 @@ function LoadingState({ label }) {
   )
 }
 
-function BigSpinner() {
+// 16-bar animated waveform visualizer — replaces spinner in loading state.
+// Each bar gets a unique --max-h and a negative animationDelay so all bars
+// start mid-cycle (already at different phases) instead of all bouncing together.
+const WVZ_HEIGHTS = [4, 8, 14, 20, 12, 26, 32, 22, 36, 28, 30, 20, 24, 16, 10, 5]
+
+function WaveformViz() {
   return (
-    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-      <circle cx="20" cy="20" r="16" stroke="var(--sage-border)" strokeWidth="3" />
-      <circle
-        cx="20" cy="20" r="16"
-        stroke="var(--sage)"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray="26 75"
-        style={{ animation: 'spin-slow 0.9s linear infinite', transformOrigin: '20px 20px' }}
-      />
-    </svg>
+    <div className="waveform-viz">
+      {WVZ_HEIGHTS.map((h, i) => (
+        <div
+          key={i}
+          className="wvz-bar"
+          style={{
+            '--max-h': `${h}px`,
+            animationDelay: `${-(i * 0.072).toFixed(3)}s`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Decorative frequency-spectrum bars for the sidebar bottom — purely atmospheric.
+const SPECTRUM_HEIGHTS = [2,4,7,11,8,15,10,19,13,17,21,15,19,13,17,11,15,9,13,7,11,6,9,5,7,4,6,3,5,3,4,2]
+
+function SidebarSpectrum() {
+  const max = Math.max(...SPECTRUM_HEIGHTS)
+  return (
+    <div className="sidebar-spectrum" style={{ width: '100%' }}>
+      {SPECTRUM_HEIGHTS.map((h, i) => (
+        <div
+          key={i}
+          className="sidebar-spectrum-bar"
+          style={{ height: `${(h / max) * 100}%` }}
+        />
+      ))}
+    </div>
   )
 }
 

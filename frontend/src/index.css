@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 /* ── Design Tokens — Precision Studio (B&W) ─────────────────────────────────── */
@@ -45,7 +45,7 @@
   --on-dark-border:  rgba(255,255,255,0.10);
 
   /* Accent / primary action → black on light, white on dark */
-  --sage:            var(--text-1);      /* components use --sage for action color */
+  --sage:            var(--text-1);
   --sage-mid:        var(--text-2);
   --sage-pale:       rgba(0,0,0,0.04);
   --sage-border:     rgba(0,0,0,0.10);
@@ -71,7 +71,7 @@
   --shadow-xs:       0 1px 3px rgba(0,0,0,0.06);
   --shadow-sm:       0 2px 8px rgba(0,0,0,0.08);
   --shadow-md:       0 4px 20px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04);
-  --shadow-lg:       0 12px 40px rgba(0,0,0,0.09), 0 3px 8px rgba(0,0,0,0.05);
+  --shadow-lg:       0 12px 40px rgba(0,0,0,0.10), 0 3px 10px rgba(0,0,0,0.05);
 
   color-scheme: light;
 }
@@ -97,15 +97,16 @@ body {
   font-weight: 600;
   letter-spacing: -0.02em;
 }
+/* JetBrains Mono for all data / instrument readouts */
 .font-mono {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: -0.03em;
 }
 .display-num {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 300;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -118,16 +119,35 @@ body {
   overflow: hidden;
 }
 
+/* Sidebar — gradient + CRT scan-line texture */
 .sidebar {
   width: 288px;
   flex-shrink: 0;
-  background: var(--sidebar);
+  background: linear-gradient(175deg, #161616 0%, #0a0a0a 100%);
   border-right: none;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
+/* Horizontal scan lines — very faint CRT texture */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(255,255,255,0.014) 3px,
+    rgba(255,255,255,0.014) 4px
+  );
+  z-index: 1;
+}
+/* All sidebar children sit above the scan-line pseudo-element */
+.sidebar > * { position: relative; z-index: 2; }
 
 .output-panel {
   flex: 1;
@@ -139,7 +159,6 @@ body {
 }
 
 /* ── Eyebrow / Section Labels ────────────────────────────────────────────────── */
-/* Default (used in right panel) */
 .eyebrow {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 10px;
@@ -148,10 +167,7 @@ body {
   text-transform: uppercase;
   color: var(--text-4);
 }
-/* Sidebar override — white-tinted labels */
-.sidebar .eyebrow {
-  color: var(--on-dark-3);
-}
+.sidebar .eyebrow { color: var(--on-dark-3); }
 
 /* ── Cards ───────────────────────────────────────────────────────────────────── */
 .card {
@@ -166,6 +182,13 @@ body {
   border-radius: var(--r-card);
   box-shadow: var(--shadow-md);
   padding: 22px 24px;
+  /* Hover lift */
+  transition: transform 0.28s cubic-bezier(0.16,1,0.3,1), box-shadow 0.28s;
+  will-change: transform;
+}
+.card-section:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 /* ── Track List ──────────────────────────────────────────────────────────────── */
@@ -187,6 +210,31 @@ body {
   text-align: left;
   width: 100%;
   transition: background 0.15s, border-color 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+/* Left-edge accent bar */
+.track-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: white;
+  opacity: 0;
+  transform: scaleY(0.2);
+  transition: opacity 0.2s, transform 0.28s cubic-bezier(0.16,1,0.3,1);
+  pointer-events: none;
+}
+.track-item:hover::before {
+  opacity: 0.22;
+  transform: scaleY(1);
+}
+.track-item.active::before {
+  opacity: 0.75;
+  transform: scaleY(1);
 }
 .track-item:hover {
   background: var(--sidebar-hover);
@@ -244,10 +292,27 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+/* Click ripple overlay */
+.analyze-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0,0,0,0.10);
+  opacity: 0;
+  transition: opacity 0.45s;
+  pointer-events: none;
+}
+.analyze-btn:active::after {
+  opacity: 1;
+  transition: opacity 0s;
 }
 .analyze-btn:hover {
-  background: #e8e8e8;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  background: #ebebeb;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22);
 }
 .analyze-btn:active { transform: translateY(1px); }
 .analyze-btn:disabled {
@@ -272,7 +337,7 @@ body {
   background: transparent;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.18s, background 0.18s, transform 0.12s;
+  transition: border-color 0.18s, background 0.18s, transform 0.2s cubic-bezier(0.16,1,0.3,1);
 }
 .upload-zone:hover {
   border-color: rgba(255,255,255,0.45);
@@ -280,9 +345,9 @@ body {
 }
 .upload-zone.dragover {
   border-style: solid;
-  border-color: rgba(255,255,255,0.70);
+  border-color: rgba(255,255,255,0.75);
   background: rgba(255,255,255,0.07);
-  transform: translateY(-1px);
+  transform: scale(1.015);
 }
 .upload-zone-icon {
   width: 36px;
@@ -295,11 +360,11 @@ body {
   border: 1px solid rgba(255,255,255,0.15);
   color: rgba(255,255,255,0.80);
   margin-bottom: 4px;
-  transition: transform 0.18s, background 0.18s;
+  transition: transform 0.22s cubic-bezier(0.16,1,0.3,1), background 0.18s;
 }
 .upload-zone:hover .upload-zone-icon,
 .upload-zone.dragover .upload-zone-icon {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   background: rgba(255,255,255,0.16);
 }
 .upload-zone-title {
@@ -324,7 +389,7 @@ body {
   border-radius: var(--r-inner);
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.07);
-  animation: fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: blur-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .upload-file-icon {
   flex-shrink: 0;
@@ -384,6 +449,11 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-inner);
+  overflow: hidden;
+}
+/* Numbers animate in with blur-up */
+.stat-block .display-num {
+  animation: num-up 0.75s 0.12s cubic-bezier(0.16,1,0.3,1) both;
 }
 
 /* ── Pill ────────────────────────────────────────────────────────────────────── */
@@ -420,10 +490,10 @@ body {
 .badge {
   display: inline-flex;
   align-items: center;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   padding: 3px 9px;
   border-radius: var(--r-pill);
   border: 1px solid;
@@ -433,10 +503,67 @@ body {
 .badge-amber { color: var(--text-2); background: var(--surface);   border-color: var(--border-mid); }
 .badge-muted { color: var(--text-4); background: transparent;      border-color: var(--border); }
 
+/* ── Waveform Visualizer — animated loading bars ─────────────────────────────── */
+.waveform-viz {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 64px;
+  padding: 0 2px;
+}
+.wvz-bar {
+  width: 3.5px;
+  border-radius: 2px;
+  background: var(--text-1);
+  min-height: 3px;
+  flex-shrink: 0;
+  animation: wvz-bounce 1.15s ease-in-out infinite;
+}
+
+/* ── Sidebar Spectrum — decorative frequency bars ────────────────────────────── */
+.sidebar-spectrum {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 22px;
+  opacity: 0.10;
+}
+.sidebar-spectrum-bar {
+  flex: 1;
+  background: rgba(255,255,255,0.9);
+  border-radius: 1.5px 1.5px 0 0;
+  min-width: 2px;
+}
+
+/* ── Breathing pulse (empty-state icon) ─────────────────────────────────────── */
+.pulse-breathe {
+  animation: breathe 3.2s ease-in-out infinite;
+}
+
 /* ── Keyframes ───────────────────────────────────────────────────────────────── */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+/* Enhanced: blur-up replaces plain fade in stagger cards */
+@keyframes blur-up {
+  from { opacity: 0; transform: translateY(14px); filter: blur(5px); }
+  to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+}
+/* Stat number reveal */
+@keyframes num-up {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); filter: blur(5px); }
+  to   { opacity: 1; transform: translateY(0) scale(1);      filter: blur(0); }
+}
+/* Waveform bar bounce */
+@keyframes wvz-bounce {
+  0%, 100% { height: 3px; opacity: 0.18; }
+  50%       { height: var(--max-h, 28px); opacity: 1; }
+}
+/* Breathing pulse for empty-state icon */
+@keyframes breathe {
+  0%, 100% { transform: scale(1);    box-shadow: var(--shadow-sm); }
+  50%       { transform: scale(1.07); box-shadow: 0 10px 30px rgba(0,0,0,0.20); }
 }
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
@@ -455,13 +582,17 @@ body {
   100% { left: 100%; }
 }
 
+/* ── Animation utilities ─────────────────────────────────────────────────────── */
 .anim-fade { animation: fade-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.stagger > *:nth-child(1) { animation: fade-in 0.5s 0.04s cubic-bezier(0.16,1,0.3,1) both; }
-.stagger > *:nth-child(2) { animation: fade-in 0.5s 0.10s cubic-bezier(0.16,1,0.3,1) both; }
-.stagger > *:nth-child(3) { animation: fade-in 0.5s 0.16s cubic-bezier(0.16,1,0.3,1) both; }
-.stagger > *:nth-child(4) { animation: fade-in 0.5s 0.22s cubic-bezier(0.16,1,0.3,1) both; }
-.stagger > *:nth-child(5) { animation: fade-in 0.5s 0.28s cubic-bezier(0.16,1,0.3,1) both; }
-.stagger > *:nth-child(6) { animation: fade-in 0.5s 0.34s cubic-bezier(0.16,1,0.3,1) both; }
+
+/* Stagger: blur-up with sequential delays */
+.stagger > * { animation: blur-up 0.65s cubic-bezier(0.16,1,0.3,1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.12s; }
+.stagger > *:nth-child(3) { animation-delay: 0.20s; }
+.stagger > *:nth-child(4) { animation-delay: 0.28s; }
+.stagger > *:nth-child(5) { animation-delay: 0.36s; }
+.stagger > *:nth-child(6) { animation-delay: 0.44s; }
 
 /* ── Loading State ───────────────────────────────────────────────────────────── */
 .loading-state {
@@ -474,6 +605,7 @@ body {
   padding: 40px 48px;
   gap: 6px;
 }
+/* Legacy progress bar — kept for any remnant references */
 .progress-track {
   position: relative;
   width: 220px;
@@ -508,7 +640,7 @@ body {
   transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s;
 }
 .splash.exiting { opacity: 0; visibility: hidden; }
-.splash-mark { animation: fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-mark { animation: blur-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
 .output-panel::-webkit-scrollbar { width: 4px; }
