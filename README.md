@@ -10,7 +10,7 @@
 
 ![SoundReverse Dashboard](screenshots/ui_dashboard_humble.png)
 
-*HUMBLE. by Kendrick Lamar — Signal Signature (−6.8 LUFS · 150 BPM · Eb Minor) and Musician Notes: tonal tags, plain-language character, and per-stem tuning targets derived from the Musician agent.*
+*HUMBLE. by Kendrick Lamar — Signal Signature (−6.8 LUFS · 150 BPM · Eb Minor), Musician tonal tags (Bass-forward · Warm/dark · Mono-solid), and per-stem tuning targets (Kick 48 Hz ≈ G1, Bass 36 Hz ≈ D1) derived deterministically from the MCP output.*
 
 ---
 
@@ -214,7 +214,7 @@ Every run produces a **public, shareable trace** — no login required.
 
 ![LangSmith Waterfall](screenshots/langsmith_trace_waterfall.png)
 
-*2-iteration HUMBLE. run: gateway → musician → analyst (LLM) → critic rejects (LLM) → analyst self-corrects (LLM) → critic approves (LLM). 4 LLM calls total.*
+*Single-pass run — 91.5s total: 78.4s Modal MCP (upload + stem analysis), then gateway (0s) → musician (6.2s) → analyst (4.8s) → critic (2.0s) → approved. 3 Gemini calls, all structured tool calls.*
 
 Live trace: [smith.langchain.com/public/58461f05-d106-47c2-93a4-bbf8460f4c2a/r](https://smith.langchain.com/public/58461f05-d106-47c2-93a4-bbf8460f4c2a/r)
 
