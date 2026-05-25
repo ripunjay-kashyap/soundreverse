@@ -10,7 +10,7 @@
 
 ![SoundReverse Dashboard](screenshots/ui_dashboard_humble.png)
 
-*HUMBLE. by Kendrick Lamar — 2-iteration run. Critic rejects iteration 1 (kick frequency mismatch +30 Hz overshoot), Analyst self-corrects, Critic approves at 100% confidence.*
+*HUMBLE. by Kendrick Lamar — Signal Signature (−6.8 LUFS · 150 BPM · Eb Minor) and Musician Notes: tonal tags, plain-language character, and per-stem tuning targets derived from the Musician agent.*
 
 ---
 
