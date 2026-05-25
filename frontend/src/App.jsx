@@ -12,17 +12,18 @@ import OutputDownloads from './components/OutputDownloads'
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export default function App() {
-  const [tracks, setTracks]               = useState([])
-  const [selectedTrack, setSelectedTrack] = useState('')
-  const [result, setResult]               = useState(null)
-  const [loading, setLoading]             = useState(false)
-  const [error, setError]                 = useState(null)
-  const [booting, setBooting]             = useState(true)
+  const [tracks, setTracks]           = useState([])
+  const [uploadedFile, setUploadedFile] = useState(null)
+  const [selectedDemo, setSelectedDemo] = useState('')
+  const [result, setResult]             = useState(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState(null)
+  const [booting, setBooting]           = useState(true)
   const [splashExiting, setSplashExiting] = useState(false)
 
   // 3s branded splash on first load: hold 2.5s, fade 0.5s, then unmount.
   useEffect(() => {
-    const fade   = setTimeout(() => setSplashExiting(true), 2500)
+    const fade    = setTimeout(() => setSplashExiting(true), 2500)
     const unmount = setTimeout(() => setBooting(false), 3000)
     return () => { clearTimeout(fade); clearTimeout(unmount) }
   }, [])
@@ -30,62 +31,61 @@ export default function App() {
   useEffect(() => {
     fetch(`${API_BASE}/tracks`)
       .then(r => r.json())
-      .then(data => {
-        setTracks(data)
-        if (data.length > 0) setSelectedTrack(data[0].track_id)
-      })
+      .then(data => setTracks(data))          // no auto-select: upload is the default action
       .catch(() => setError('Failed to load tracks'))
   }, [])
 
-  async function handleAnalyze() {
-    if (!selectedTrack) return
-    setLoading(true)
-    setResult(null)
-    setError(null)
+  // Shared polling loop: resolves with job result or rejects with an error message.
+  function pollJob(jobId) {
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        try {
+          const poll = await fetch(`${API_BASE}/jobs/${jobId}`)
+          if (!poll.ok) { clearInterval(interval); reject(new Error(`Poll error ${poll.status}`)); return }
+          const job = await poll.json()
+          if (job.status === 'completed') { clearInterval(interval); resolve(job.result) }
+          else if (job.status === 'failed') { clearInterval(interval); reject(new Error(job.error || 'Job failed')) }
+          // pending / processing → keep polling
+        } catch (e) { clearInterval(interval); reject(e) }
+      }, 3000)
+    })
+  }
 
+  // Wraps any fetch that returns {job_id}, polls to completion, and sets state.
+  async function submit(makeRequest) {
+    setLoading(true); setResult(null); setError(null)
     try {
-      // Submit job — returns immediately with a job_id (202 Accepted)
-      const res = await fetch(`${API_BASE}/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_input: selectedTrack }),
-      })
+      const res = await makeRequest()
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.detail || `HTTP ${res.status}`)
+        const err = await res.json().catch(() => ({}))
+        // FastAPI 422 detail is an array of validation objects — extract the first message.
+        const detail = err.detail
+        const msg = Array.isArray(detail)
+          ? (detail[0]?.msg || `HTTP ${res.status}`)
+          : (typeof detail === 'string' ? detail : `HTTP ${res.status}`)
+        throw new Error(msg)
       }
       const { job_id } = await res.json()
-
-      // Poll GET /jobs/{job_id} every 3 seconds until completed or failed
-      await new Promise((resolve, reject) => {
-        const interval = setInterval(async () => {
-          try {
-            const poll = await fetch(`${API_BASE}/jobs/${job_id}`)
-            if (!poll.ok) { clearInterval(interval); reject(new Error(`Poll error ${poll.status}`)); return }
-            const job = await poll.json()
-
-            // TODO(mcp-integration): when the backend returns a live `job.stage`, lift it
-            // into state here and pass it to <LoadingState> to replace the timer-driven caption.
-
-            if (job.status === 'completed') {
-              clearInterval(interval)
-              resolve(job.result)
-            } else if (job.status === 'failed') {
-              clearInterval(interval)
-              reject(new Error(job.error || 'Job failed'))
-            }
-            // pending / processing → keep polling
-          } catch (e) {
-            clearInterval(interval)
-            reject(e)
-          }
-        }, 3000)
-      }).then(data => setResult(data))
-
+      const data = await pollJob(job_id)
+      setResult(data)
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  function handleAnalyze() {
+    if (uploadedFile) {
+      const fd = new FormData()
+      fd.append('file', uploadedFile)
+      submit(() => fetch(`${API_BASE}/analyze`, { method: 'POST', body: fd }))
+    } else if (selectedDemo) {
+      submit(() => fetch(`${API_BASE}/demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ track_id: selectedDemo }),
+      }))
     }
   }
 
@@ -104,16 +104,16 @@ export default function App() {
             margin: 0,
             fontSize: 27,
             fontWeight: 700,
-            color: 'var(--ink)',
+            color: '#ffffff',
             lineHeight: 1.1,
             letterSpacing: '-0.035em',
           }}>
-            Sound<span style={{ color: 'var(--sage)' }}>Reverse</span>
+            Sound<span style={{ color: 'rgba(255,255,255,0.55)' }}>Reverse</span>
           </h1>
           <p style={{
             margin: '8px 0 0',
             fontSize: 12,
-            color: 'var(--ink-4)',
+            color: 'rgba(255,255,255,0.55)',
             lineHeight: 1.5,
           }}>
             LangGraph multi-agent mastering analysis
@@ -124,37 +124,17 @@ export default function App() {
 
         {/* Track list */}
         <div style={{ padding: '20px 16px', flex: 1, overflowY: 'auto' }}>
-          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Search Track</p>
-          <div className="search-bar" style={{ marginBottom: 20 }}>
-            <input
-              type="text"
-              value={selectedTrack}
-              onChange={(e) => setSelectedTrack(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !loading && selectedTrack) handleAnalyze() }}
-              placeholder="Type artist + song..."
-            />
-            <button
-              className="search-go"
-              onClick={handleAnalyze}
-              disabled={loading || !selectedTrack}
-              title="Analyze"
-              aria-label="Analyze"
-            >
-              <ArrowIcon />
-            </button>
-          </div>
-
-          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or Upload a Track</p>
+          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Upload a Track</p>
           <div style={{ marginBottom: 20 }}>
-            <FileUpload />
+            <FileUpload onFileChange={(f) => { setUploadedFile(f); if (f) setSelectedDemo('') }} />
           </div>
 
-          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or Select Cached</p>
-          <TrackSelector tracks={tracks} selected={selectedTrack} onChange={setSelectedTrack} />
+          <p className="eyebrow" style={{ marginBottom: 12, paddingLeft: 4 }}>Or try a demo</p>
+          <TrackSelector tracks={tracks} selected={selectedDemo} onChange={(id) => { setSelectedDemo(id); setUploadedFile(null) }} />
         </div>
 
         {/* Analyze + footer */}
-        <div style={{ padding: '16px 20px 24px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ padding: '16px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
           {error && (
             <div style={{
               marginBottom: 12,
@@ -169,14 +149,18 @@ export default function App() {
               ⚠ {error}
             </div>
           )}
-          <AnalyzeButton loading={loading} onClick={handleAnalyze} />
+          <AnalyzeButton
+            loading={loading}
+            disabled={!uploadedFile && !selectedDemo}
+            onClick={handleAnalyze}
+          />
         </div>
       </aside>
 
       {/* ── Right Panel ── */}
       <main className="output-panel">
         {loading ? (
-          <LoadingState label={tracks.find(t => t.track_id === selectedTrack)?.label || selectedTrack} />
+          <LoadingState label={uploadedFile ? uploadedFile.name : (tracks.find(t => t.track_id === selectedDemo)?.label || '')} />
         ) : result ? (
           <ResultsView result={result} />
         ) : (
@@ -192,7 +176,7 @@ function Splash({ exiting }) {
   return (
     <div className={`splash${exiting ? ' exiting' : ''}`}>
       <div className="splash-mark" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
-        <p className="eyebrow" style={{ margin: 0 }}>Audio Intelligence</p>
+        <p className="eyebrow" style={{ margin: 0, color: 'var(--ink-4)' }}>Audio Intelligence</p>
         <h1 className="font-brand" style={{
           margin: 0,
           fontSize: 44,
@@ -201,7 +185,7 @@ function Splash({ exiting }) {
           letterSpacing: '-0.04em',
           lineHeight: 1,
         }}>
-          Sound<span style={{ color: 'var(--sage)' }}>Reverse</span>
+          Sound<span style={{ color: 'var(--ink-4)' }}>Reverse</span>
         </h1>
         <BootSpinner />
       </div>
@@ -238,45 +222,19 @@ function EmptyState() {
       textAlign: 'center',
       overflow: 'hidden',
     }}>
-      {/* Ghosted pipeline-stage words (reference's faint category text) */}
-      <div aria-hidden="true" style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        gap: 4,
-        paddingLeft: 56,
-        pointerEvents: 'none',
-        userSelect: 'none',
-      }}>
-        {['Research', 'Analyze', 'Critique', 'Master'].map((w, i) => (
-          <span key={w} className="font-brand" style={{
-            fontSize: 'clamp(44px, 8vw, 92px)',
-            fontWeight: 300,
-            lineHeight: 1.02,
-            letterSpacing: '-0.03em',
-            color: 'var(--ink)',
-            opacity: 0.035 + i * 0.004,
-          }}>
-            {w}
-          </span>
-        ))}
-      </div>
-
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{
           width: 56,
           height: 56,
           borderRadius: '50%',
-          background: 'var(--white)',
-          border: '1px solid var(--border)',
+          background: 'var(--ink)',
+          border: 'none',
           boxShadow: 'var(--shadow-sm)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: 22,
-          color: 'var(--sage)',
+          color: '#ffffff',
         }}>
           <WaveformIcon />
         </div>
@@ -300,10 +258,10 @@ function EmptyState() {
         </p>
         <div className="pill" style={{
           marginTop: 26,
-          background: 'var(--white)',
-          border: '1px solid var(--border)',
+          background: 'var(--ink)',
+          border: 'none',
           boxShadow: 'var(--shadow-xs)',
-          color: 'var(--ink-4)',
+          color: '#ffffff',
           letterSpacing: '0.04em',
         }}>
           <span>←</span>

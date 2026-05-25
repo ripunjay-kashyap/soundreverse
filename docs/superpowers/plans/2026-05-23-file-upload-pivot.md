@@ -14,6 +14,70 @@
 
 ---
 
+## Progress — RESUME HERE (updated 2026-05-25)
+
+**Branch:** `feature/file-upload-pivot`
+
+**Done & committed:**
+- ✅ Spec + this plan (committed).
+- ✅ **Task 1** — requirements.txt (yt-dlp → requests). `c6c9d4c`
+- ✅ **Task 2** — `agents/mcp.py` + `tests/test_mcp.py` (5 tests pass). `9204849`
+- ✅ **Task 3** — graph rewired to `mcp` entry; `researcher.py`, `mcp_mock.py`, `test_researcher.py` deleted. `b3a5454`
+- ✅ **Step 0** — Modal poll logic fixed (`_is_failed` header-wrapper check, `queued`/`running` states), `POLL_DEADLINE_S=540`, worker `timeout=560`. `3b76426`
+- ✅ **Task 4** — `api.py` multipart `/analyze`, `/demo`, unified worker, 3 demos; `python-multipart` dep; `.gitignore` unblocks `docs/**/*.md`. `df4cb81`
+- ✅ **Task 5 (docs)** — `CLAUDE.md` updated for pivot. `032ac66`
+- ✅ **Task 5 (tests)** — `tests/test_api.py` (6 tests, 42/42 passing, double-stub Supabase fixture). `a3e8255`
+- ⏳ **Task 6** — frontend wiring + B&W precision-studio design (in working tree, committing now).
+
+**Next steps:**
+1. ✅ **Commit Task 6** — `feat(ui): upload-primary wiring + precision-studio B&W design`
+2. **Task 7** — add `MODAL_MCP_URL=https://ripun-j-kashyap--audio-sonic-mcp-mcp-server.modal.run` to `.env` (manual; user action).
+3. **Task 8** — end-to-end manual verification:
+   - Demo path (no Modal needed): pick a demo track → Run Analysis → see results ✅ confirmed working
+   - Upload path (needs `MODAL_MCP_URL` + Modal reachable): upload an mp3/wav → Run Analysis → see results
+   - Error path: upload invalid file, check 415 error message surfaces correctly
+
+**Known issue (pre-existing, NOT a regression):** `tests/test_critic.py::test_critic_node_signs_off_at_max_iterations` fails when `GOOGLE_API_KEY` is absent from the pytest process (critic instantiates the Gemini client). Passes wherever the key is in the environment. All other tests pass (35/36).
+
+### Modal MCP — ANSWERED 2026-05-23 + ⛔ SCHEMA BLOCKER
+
+**Confirmed (green):** auth open (no header); upload = raw binary body + `X-Filename` → `{"status":"queued","job_id":"file_...","poll_endpoint":"/jobs/..."}`; no IP allowlist; errors `400` empty body / `500` exception / `404` unknown id, bad audio → job ends `status:"error"`; metadata = filename stem only, **no artist**; timing warm ≈73s, warm worst-case ≈100s, true cold start +60–120s.
+
+**Real poll shape (our current assumptions are WRONG — fix in `mcp.py`):**
+- processing → `{"status":"queued"}` or `{"status":"running"}` (NOT `"processing"`)
+- success → `{"header":{"status":"success",...}, "sonic_signature":{...}, "telemetry":{...}}`
+- failure → `{"header":{"status":"error",...}, "error":{"type","message"}, "telemetry":{...}}`
+- So: detect done via `header.status == "success"`, failed via `header.status == "error"`, else keep polling.
+
+**⛔ BLOCKER — schema mismatch + missing stems.** Modal's payload (`header`/`sonic_signature`/`telemetry`) ≠ our `SignalSignature` (`track_id`/`metadata`/`stems`/`master`/`rhythm`). Mapping: `metadata`←`header.source_metadata`, `master`←`sonic_signature.production_profile`, `rhythm`←`sonic_signature.{bpm,key,...}`, `track_id`← our filename slug. **`stems` are NOT in the payload at all** (computed then deleted) — and the Musician tuning targets, the Analyst `kick_fundamental_boost` rule, and the Critic kick-freq check all need them. Cannot be derived our side.
+
+**Resolution (relayed to Modal agent):** asked Modal to **emit our `SignalSignature` shape on success, INCLUDING the four stems** (drums/bass/vocals/other with StemMetrics: lufs, peak_db, dynamic_range_db, spectral_tilt, stereo_correlation; +drums kick/snare_fundamental_hz, transient_sharpness; +bass/vocals fundamental_hz; +vocals presence_peak_hz). MasterMetrics + RhythmMetrics fields per `schemas/signal_signature.py`. Alternative offered: Modal keeps native shape but adds stems, and we write a field-mapping adapter in `mcp_node`. **Non-negotiable: stems must be in the payload.** Also requested **one real success sample** in the agreed shape.
+
+**Next-session code work once schema is agreed:**
+1. Fix `_modal_poll`/`_extract_signature`/`_is_failed` for the real envelope (`status` queued/running; `header.status` success/error). If Modal emits bare `SignalSignature` on success, current key-detection works; if it keeps the wrapper, add a `_to_signal_signature(payload)` adapter.
+2. Bump `POLL_DEADLINE_S` (mcp.py, 250→~540) and the worker `timeout` (api.py, 300→~560) for cold-start safety (under Modal's 600 and the 600s orphan reaper).
+3. Drop the agreed real sample into a fixture; validate against `tests/test_mcp_contract.py`; update `tests/test_mcp.py`.
+4. **Task 8 (upload e2e) is BLOCKED until the above + a confirmed sample land.** The demo path is unaffected (uses `cache/*.json` directly).
+
+---
+
+#### (Original assumptions, kept for reference — now corrected by the answers above)
+Each item lists what `agents/mcp.py` / the Gateway currently **assume**.
+
+**Must-confirm (block integration):**
+1. **Poll shape** (`GET /jobs/{id}`): our `_modal_poll`/`_extract_signature` treat it as *done* when the JSON has top-level `master`+`stems`+`rhythm` (or nested under `result`/`signature`), *failed* when `status` ∈ {`failed`,`error`}, else keep polling. → Confirm the in-progress shape, whether the signature is top-level or nested, and the failure shape (`status` + `error` field?).
+2. **Success payload must match our `SignalSignature` schema field-for-field** (`cache/*.json` is the contract: `track_id`, `metadata`, `stems` w/ `drums`+`bass`+`vocals`+`other`, `master`, `rhythm`). → Best artifact: **one real sample success JSON** (answers #1, #2, #6 at once; validate against `test_mcp_contract.py`).
+3. **Auth** on `/upload` & `/jobs`: our code sends **none**. → Confirm open, or give header name + token (then add a `MODAL_MCP_TOKEN` env var + header in `mcp.py`).
+4. **Upload format**: we POST **raw bytes in body** (not multipart) + header `X-Filename`, and read `{"job_id": "file_..."}`. → Confirm.
+
+**Should-confirm (reliability/UX):**
+5. **Cold-start timing**: was the 70s run warm or cold? Our poll deadline = **250s**, worker timeout = **300s**. → If cold + long song can exceed ~250s, raise `POLL_DEADLINE_S` in `mcp.py` and the `300.0` in `api.py` (Modal's `timeout=600` gives headroom).
+6. **Metadata**: does the signature carry `metadata.title`/`artist`? (We override `title` with the filename regardless.)
+7. **Server-to-server**: confirm no IP allowlist blocks Render's egress IP calling Modal.
+8. **Error responses**: `/upload` status/body on bad/oversize input; does `/jobs/{id}` 404 on unknown id?
+
+---
+
 ## File Structure
 
 - **Create** `agents/mcp.py` — the new `mcp_node` (demo loader + Modal upload/poll client).
