@@ -30,7 +30,7 @@
 
 ## What Makes This Interesting
 
-This isn't a chatbot wrapper. It's a constrained agentic pipeline where:
+ It's a constrained agentic pipeline where:
 
 - **Audio analysis runs in a Modal-hosted MCP server** (HTDemucs 4-stem + CLAP) — the main app has zero audio libraries
 - **All numbers come from a YAML rules engine evaluated in pure Python** — the LLM cannot hallucinate EQ frequencies or compression ratios
