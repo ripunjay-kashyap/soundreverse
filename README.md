@@ -2,11 +2,25 @@
 
 **A production LangGraph multi-agent system that reverse-engineers mastering decisions from an audio file's sonic fingerprint — producing EQ settings, compression parameters, musician notes, and a full agent reasoning trace as a downloadable Producer Session Pack.**
 
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-multi--agent-4B8BBE)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Supabase](https://img.shields.io/badge/Supabase-job%20queue-3ECF8E?logo=supabase&logoColor=white)
+
 **[Live Demo →](https://soundreverse.vercel.app)** · **[LangSmith Trace (public) →](https://smith.langchain.com/public/58461f05-d106-47c2-93a4-bbf8460f4c2a/r)**
 
 ---
 
 ## Dashboard
+
+![SoundReverse Default UI](screenshots/ui_empty_state.png)
+
+*The sidebar lists three demo tracks and a file upload zone. The Run Analysis button activates once a track or file is selected.*
+
+---
+
+## Results View
 
 ![SoundReverse Dashboard](screenshots/ui_dashboard_humble.png)
 
@@ -90,7 +104,7 @@ Two branches, same output contract (`SignalSignature` JSON):
 
 | Input | What happens |
 |---|---|
-| **Upload** (mp3/wav) | Streams file to Modal MCP (`POST /upload`), polls `/jobs/{id}` with tenacity retries until `SignalSignature` is ready (~30–90s) |
+| **Upload** (mp3/wav, max 50 MB) | Streams file to Modal MCP (`POST /upload`), polls `/jobs/{id}` with tenacity retries until `SignalSignature` is ready (~30–90s) |
 | **Demo track** | Loads pre-computed `cache/{track_id}.json` instantly — no network, no Modal cold start |
 
 The Gateway contract (`raw_mcp_output → SignalSignature`) is the swap point — both branches must satisfy the same Pydantic schema.
@@ -237,10 +251,10 @@ Live trace: [smith.langchain.com/public/58461f05-d106-47c2-93a4-bbf8460f4c2a/r](
 | Schema validation | Pydantic v2 |
 | Rules engine | PyYAML — deterministic EQ/compression mapping evaluated in pure Python |
 | Observability | LangSmith — public trace URLs, full agent debate log |
-| Async job queue | FastAPI + Supabase (`jobs` table) — 300s worker, orphan reaper, output sweeper |
-| Frontend | React + Vite + Tailwind CSS v4 |
+| Async job queue | FastAPI + Supabase (`jobs` table) — 560s worker timeout, orphan reaper, output sweeper |
+| Frontend | React 19 + Vite + Tailwind CSS v4 |
 | PDF output | fpdf2 — 2-page blueprint |
-| Backend deploy | Render (Python native runtime) |
+| Backend deploy | Render (Python 3.11 native runtime) |
 | Frontend deploy | Vercel |
 
 ---
@@ -263,7 +277,7 @@ soundreverse/
 │   └── musician_notes.py
 ├── rules/
 │   └── rules.yaml      # Deterministic EQ / compression / gain mapping
-├── cache/              # 3 pre-computed SignalSignature JSON files (demo tracks)
+├── cache/              # Pre-computed SignalSignature JSON files (3 active demo tracks)
 ├── output/
 │   └── generator.py    # PDF blueprint + JSON preset + metadata writer
 ├── frontend/           # React + Vite dashboard
@@ -282,16 +296,28 @@ soundreverse/
 # 1. Clone and install
 git clone https://github.com/ripunjay-kashyap/soundreverse.git
 cd soundreverse
-python -m venv venv && venv/Scripts/activate   # Windows
+python -m venv venv && venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 
 # 2. Environment variables
 cp .env.example .env
-# Fill in: GOOGLE_API_KEY, LANGSMITH_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
-# Optional: SONIC_MCP_URL (only needed for real file upload, not demo tracks)
+```
 
+Edit `.env` with your credentials:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `GOOGLE_API_KEY` | ✅ Always | Gemini API key |
+| `LANGSMITH_API_KEY` | ✅ Always | LangSmith tracing |
+| `LANGSMITH_PROJECT` | ✅ Always | Project name (default: `soundreverse-v1`) |
+| `LANGCHAIN_TRACING_V2` | ✅ Always | Set to `true` |
+| `SUPABASE_URL` | ✅ Always | Supabase project URL |
+| `SUPABASE_ANON_KEY` | ✅ Always | Supabase anon key |
+| `SONIC_MCP_URL` | ⚡ Upload path only | Modal MCP endpoint — demo tracks work without it |
+
+```bash
 # 3. Run backend
-venv/Scripts/python -m uvicorn api:app --reload --port 8001
+venv\Scripts\python -m uvicorn api:app --reload --port 8001
 
 # 4. Run frontend (separate terminal)
 cd frontend && npm install && npm run dev
@@ -300,9 +326,13 @@ cd frontend && npm install && npm run dev
 # Demo tracks work immediately — upload path needs SONIC_MCP_URL
 ```
 
-**CLI (demo tracks, no server needed):**
+**CLI — demo tracks (no server needed):**
 ```bash
+# Run a demo track
 python -m agents.graph --demo humble_kendrick
+
+# Analyse a local file (requires SONIC_MCP_URL)
+python -m agents.graph --file path/to/song.mp3
 ```
 
 **Tests:**
@@ -314,10 +344,27 @@ pytest tests/ -v
 
 ## Demo Tracks
 
-| Track | Artist | Notes |
-|---|---|---|
-| Billie Jean | Michael Jackson | Pop/funk — mid-forward, tight dynamics |
-| HUMBLE. | Kendrick Lamar | ⚡ Triggers 2-iteration critic loop (stress test) |
-| Blinding Lights | The Weeknd | Synth-pop — loud master, bright spectral tilt |
+| Track | Artist | Genre | Notes |
+|---|---|---|---|
+| Billie Jean | Michael Jackson | Pop/funk | Mid-forward, tight dynamics |
+| HUMBLE. | Kendrick Lamar | Trap/Hip-Hop | ⚡ Triggers 2-iteration critic loop (stress test) |
+| Blinding Lights | The Weeknd | Synth-pop | Loud master, bright spectral tilt |
 
 ⚡ HUMBLE. deliberately overshoots kick EQ frequency by +30 Hz on iteration 1 to demonstrate the Analyst–Critic rejection and self-correction cycle end-to-end.
+
+---
+
+## Contributing
+
+Issues and PRs are welcome. A few things to know before contributing:
+
+- **Tests cover the deterministic core** — `pytest tests/ -v` runs analyst rules, critic checks, gateway validation, and MCP contract tests; all should pass before opening a PR
+- **LLM calls are not tested** — the Musician, Analyst, and Critic LLM calls are integration-tested manually via demo track runs
+- **The Modal MCP server is a separate repo** — changes to `SignalSignature` schema must be coordinated with the MCP server to keep the contract in sync
+- **`rules.yaml` is the budget** — adding a rule adds a new EQ band or compression branch; keep rules physically grounded and avoid overlapping conditions
+
+---
+
+## License
+
+MIT © [Ripunjay Kashyap](https://github.com/ripunjay-kashyap)
