@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 CONFIDENCE_THRESHOLD = 0.8
 MAX_ITERATIONS = 3
-MODEL = "gemini-3.1-flash-lite"
+MODEL = "gemini-3.5-flash"
 
 
 @retry(

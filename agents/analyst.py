@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from agents.graph import GraphState
 
 RULES_PATH = Path(__file__).parent.parent / "rules" / "rules.yaml"
-MODEL = "gemini-3.1-flash-lite"
+MODEL = "gemini-3.5-flash"
 
 
 # ── Tool schema the LLM must call to return reasons ─────────────────────────
