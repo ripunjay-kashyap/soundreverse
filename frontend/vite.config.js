@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
+      '/health':  'http://127.0.0.1:8001',
       '/analyze': 'http://127.0.0.1:8001',
       '/demo':    'http://127.0.0.1:8001',
       '/tracks':  'http://127.0.0.1:8001',

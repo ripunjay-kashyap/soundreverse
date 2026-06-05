@@ -11,6 +11,65 @@ import OutputDownloads from './components/OutputDownloads'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
+// ── Health-check with retry for Render cold-start ────────────────────────────
+const HEALTH_POLL_MS  = 2500   // retry interval
+const HEALTH_TIMEOUT  = 90_000 // give up after 90s
+const MIN_SPLASH_MS   = 2200   // splash is shown for at least this long (branding)
+
+function useBackendReady() {
+  const [ready, setReady]       = useState(false)
+  const [waiting, setWaiting]   = useState(false) // true after first failed ping
+  const [elapsed, setElapsed]   = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    const t0 = Date.now()
+
+    async function ping() {
+      try {
+        const res = await fetch(`${API_BASE}/health`, { cache: 'no-store' })
+        if (res.ok && !cancelled) {
+          // Validate response is actually our API (not an SPA fallback serving HTML)
+          const body = await res.json()
+          if (body?.status !== 'ok') return false
+          // Ensure minimum splash duration for branding
+          const remaining = MIN_SPLASH_MS - (Date.now() - t0)
+          if (remaining > 0) await new Promise(r => setTimeout(r, remaining))
+          if (!cancelled) setReady(true)
+          return true
+        }
+      } catch { /* network error or JSON parse error — backend not up yet */ }
+      return false
+    }
+
+    (async () => {
+      // First ping — fast path for warm server
+      if (await ping()) return
+      if (cancelled) return
+      setWaiting(true)
+
+      // Retry loop
+      const timer = setInterval(() => {
+        if (cancelled) return
+        setElapsed(Date.now() - t0)
+      }, 300)
+
+      while (!cancelled && (Date.now() - t0) < HEALTH_TIMEOUT) {
+        await new Promise(r => setTimeout(r, HEALTH_POLL_MS))
+        if (cancelled) break
+        if (await ping()) { clearInterval(timer); return }
+      }
+      clearInterval(timer)
+      // Timeout — let the user in anyway (tracks fetch will show its own error)
+      if (!cancelled) setReady(true)
+    })()
+
+    return () => { cancelled = true }
+  }, [])
+
+  return { ready, waiting, elapsed }
+}
+
 export default function App() {
   const [tracks, setTracks]           = useState([])
   const [uploadedFile, setUploadedFile] = useState(null)
@@ -18,22 +77,23 @@ export default function App() {
   const [result, setResult]             = useState(null)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState(null)
-  const [booting, setBooting]           = useState(true)
   const [splashExiting, setSplashExiting] = useState(false)
 
-  // 3s branded splash on first load: hold 2.5s, fade 0.5s, then unmount.
-  useEffect(() => {
-    const fade    = setTimeout(() => setSplashExiting(true), 2500)
-    const unmount = setTimeout(() => setBooting(false), 3000)
-    return () => { clearTimeout(fade); clearTimeout(unmount) }
-  }, [])
+  const { ready: backendReady, waiting: serverWaking, elapsed } = useBackendReady()
+  const booting = !backendReady || !splashExiting
 
+  // Once backend responds, start the fade-out and fetch tracks
   useEffect(() => {
+    if (!backendReady) return
+    // Kick off the exit animation
+    const fadeTimer = setTimeout(() => setSplashExiting(true), 400)
+    // Fetch tracks now that backend is alive
     fetch(`${API_BASE}/tracks`)
       .then(r => r.json())
-      .then(data => setTracks(data))          // no auto-select: upload is the default action
+      .then(data => setTracks(data))
       .catch(() => setError('Failed to load tracks'))
-  }, [])
+    return () => clearTimeout(fadeTimer)
+  }, [backendReady])
 
   // Shared polling loop: resolves with job result or rejects with an error message.
   function pollJob(jobId) {
@@ -91,7 +151,7 @@ export default function App() {
 
   return (
     <>
-    {booting && <Splash exiting={splashExiting} />}
+    {booting && <Splash exiting={splashExiting} serverWaking={serverWaking} elapsed={elapsed} />}
     <div className="app-layout">
 
       {/* ── Left Sidebar ── */}
@@ -177,7 +237,11 @@ export default function App() {
   )
 }
 
-function Splash({ exiting }) {
+function Splash({ exiting, serverWaking, elapsed }) {
+  const elapsedSec = Math.floor((elapsed || 0) / 1000)
+  // Estimate ~40s typical cold-start; cap visual progress at 92%
+  const progress = Math.min(92, Math.round(((elapsed || 0) / 45000) * 100))
+
   return (
     <div className={`splash${exiting ? ' exiting' : ''}`}>
       <div className="splash-mark" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
@@ -193,6 +257,45 @@ function Splash({ exiting }) {
           Sound<span style={{ color: 'var(--ink-4)' }}>Reverse</span>
         </h1>
         <BootSpinner />
+
+        {/* Cold-start messaging — only appears after first health ping fails */}
+        {serverWaking && (
+          <div className="cold-start-notice anim-fade" style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+            marginTop: 8, maxWidth: 320,
+          }}>
+            {/* Progress track */}
+            <div style={{
+              width: 200, height: 3, borderRadius: 'var(--r-pill)',
+              background: 'var(--border)', overflow: 'hidden', position: 'relative',
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, left: 0, height: '100%',
+                width: `${progress}%`, borderRadius: 'var(--r-pill)',
+                background: 'var(--text-1)',
+                transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+              }} />
+            </div>
+
+            <p style={{
+              margin: 0, fontSize: 13.5, fontWeight: 500,
+              color: 'var(--ink-3)', lineHeight: 1.5, textAlign: 'center',
+            }}>
+              Server is waking up…
+            </p>
+            <p style={{
+              margin: 0, fontSize: 12, color: 'var(--ink-4)',
+              lineHeight: 1.6, textAlign: 'center',
+            }}>
+              {elapsedSec < 10
+                ? 'This free-tier server sleeps when idle — it\'ll be ready in ~30 seconds.'
+                : elapsedSec < 40
+                  ? `Almost there… (${elapsedSec}s)`
+                  : `Still spinning up — hang tight (${elapsedSec}s)`
+              }
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
