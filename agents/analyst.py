@@ -2,11 +2,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
-from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from google.genai.errors import ServerError, ClientError
 
 from schemas.producer_settings import Compression, EQBand, ProducerSettings
 from schemas.signal_signature import SignalSignature
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from agents.graph import GraphState
 
 RULES_PATH = Path(__file__).parent.parent / "rules" / "rules.yaml"
-MODEL = "gemini-3.5-flash"
+MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 # ── Tool schema the LLM must call to return reasons ─────────────────────────
@@ -115,10 +115,10 @@ def _apply_rules(sig: SignalSignature, rules: list[dict], iteration_count: int =
     }
 
 
-# ── Retry wrapper for transient Gemini errors ────────────────────────────────
+# ── Retry wrapper for transient Groq errors ──────────────────────────────────
 
 @retry(
-    retry=retry_if_exception_type(ServerError),  # only retry 5xx, not 4xx (quota/auth errors)
+    retry=retry_if_exception_type(Exception),
     wait=wait_exponential(multiplier=3, min=5, max=60),
     stop=stop_after_attempt(2),
     reraise=True,
@@ -133,7 +133,7 @@ def _refine_reasons(
     sig: SignalSignature,
     draft: dict[str, Any],
     critique: str,
-    llm: ChatGoogleGenerativeAI,
+    llm: ChatGroq,
 ) -> ReasonBundle:
     eq_summaries = "\n".join(
         f"  - {b['band']} @ {b['freq']}Hz, gain={b['gain_db']}dB — template: {b['reason']}"
@@ -192,13 +192,11 @@ def analyst_node(state: "GraphState") -> "GraphState":
 
     draft = _apply_rules(sig, rules, iteration_count, stress_test)
 
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
+    llm = ChatGroq(model=MODEL, temperature=0, timeout=30.0)
     try:
         bundle = _refine_reasons(sig, draft, critique, llm)
-    except ServerError:
-        return {**state, "error": "Gemini API is temporarily unavailable (503). Please try again in a moment."}
-    except ClientError as e:
-        return {**state, "error": f"Gemini API request failed — check your GOOGLE_API_KEY or quota. ({e})"}
+    except Exception as e:
+        return {**state, "error": f"Groq API request failed: {e}"}
 
     # Build EQBand objects with LLM-refined reasons
     eq_bands = []

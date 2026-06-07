@@ -1,11 +1,11 @@
 import math
 from typing import TYPE_CHECKING
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from google.genai.errors import ServerError
 
 from schemas.signal_signature import SignalSignature, MasterMetrics
 from schemas.musician_notes import MusicianNotes, TuningTarget
@@ -13,7 +13,7 @@ from schemas.musician_notes import MusicianNotes, TuningTarget
 if TYPE_CHECKING:
     from agents.graph import GraphState
 
-MODEL = "gemini-3.5-flash"
+MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 _NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -92,7 +92,7 @@ class _NotesDraft(BaseModel):
 
 
 @retry(
-    retry=retry_if_exception_type(ServerError),
+    retry=retry_if_exception_type(Exception),
     wait=wait_exponential(multiplier=3, min=5, max=60),
     stop=stop_after_attempt(2),
     reraise=True,
@@ -102,7 +102,7 @@ def _invoke_with_retry(llm_with_tool, messages):
 
 
 def _phrase_notes(sig: SignalSignature, targets: list[TuningTarget], tags: list[str],
-                  llm: ChatGoogleGenerativeAI) -> tuple[str, str]:
+                  llm: ChatGroq) -> tuple[str, str]:
     r = sig.rhythm
     target_lines = "\n".join(f"  - {t.element}: {t.hz:g} Hz (~{t.note})" for t in targets) or "  (none detected)"
 
@@ -157,7 +157,7 @@ def musician_node(state: "GraphState") -> "GraphState":
     tags = _tonal_tags(sig.master)
 
     try:
-        llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0.3, timeout=30.0)
+        llm = ChatGroq(model=MODEL, temperature=0.3, timeout=30.0)
         tip, character = _phrase_notes(sig, targets, tags, llm)
     except Exception:
         tip, character = _fallback_text(targets, tags)

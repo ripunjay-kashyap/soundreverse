@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING
 
+import os
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from google.genai.errors import ServerError, ClientError
 
 from schemas.producer_settings import ProducerSettings
 from schemas.signal_signature import SignalSignature
@@ -14,11 +14,11 @@ if TYPE_CHECKING:
 
 CONFIDENCE_THRESHOLD = 0.8
 MAX_ITERATIONS = 3
-MODEL = "gemini-3.5-flash"
+MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 @retry(
-    retry=retry_if_exception_type(ServerError),
+    retry=retry_if_exception_type(Exception),
     wait=wait_exponential(multiplier=3, min=5, max=60),
     stop=stop_after_attempt(2),
     reraise=True,
@@ -92,7 +92,7 @@ def _generate_critique(
     settings: ProducerSettings,
     checks: list[dict],
     failures: list[str],
-    llm: ChatGoogleGenerativeAI,
+    llm: ChatGroq,
 ) -> CritiqueBundle:
     """
     LLM call: given the deterministic check results, write a structured critique.
@@ -151,13 +151,11 @@ def critic_node(state: "GraphState") -> "GraphState":
     confidence, validation_checks, failures = _run_checks(sig, settings)
 
     # LLM call: write a structured critique narrative the Analyst can act on
-    llm = ChatGoogleGenerativeAI(model=MODEL, temperature=0, timeout=30.0)
+    llm = ChatGroq(model=MODEL, temperature=0, timeout=30.0)
     try:
         bundle = _generate_critique(sig, settings, validation_checks, failures, llm)
-    except ServerError:
-        return {**state, "error": "Gemini API is temporarily unavailable (503). Please try again in a moment."}
-    except ClientError as e:
-        return {**state, "error": f"Gemini API request failed — check your GOOGLE_API_KEY or quota. ({e})"}
+    except Exception as e:
+        return {**state, "error": f"Groq API request failed: {e}"}
 
     # Pass the LLM-written hints as the critique so Analyst gets actionable feedback
     critique = bundle.verdict_narrative
