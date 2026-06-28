@@ -25,6 +25,13 @@ function useBackendReady() {
     let cancelled = false
     const t0 = Date.now()
 
+    // Drive the loading bar from the first frame so it always shows motion,
+    // even on the fast warm-server path (not just after a ping fails).
+    const timer = setInterval(() => {
+      if (!cancelled) setElapsed(Date.now() - t0)
+    }, 200)
+    const stop = () => clearInterval(timer)
+
     async function ping() {
       try {
         const res = await fetch(`${API_BASE}/health`, { cache: 'no-store' })
@@ -44,27 +51,22 @@ function useBackendReady() {
 
     (async () => {
       // First ping — fast path for warm server
-      if (await ping()) return
-      if (cancelled) return
+      if (await ping()) { stop(); return }
+      if (cancelled) { stop(); return }
       setWaiting(true)
 
       // Retry loop
-      const timer = setInterval(() => {
-        if (cancelled) return
-        setElapsed(Date.now() - t0)
-      }, 300)
-
       while (!cancelled && (Date.now() - t0) < HEALTH_TIMEOUT) {
         await new Promise(r => setTimeout(r, HEALTH_POLL_MS))
         if (cancelled) break
-        if (await ping()) { clearInterval(timer); return }
+        if (await ping()) { stop(); return }
       }
-      clearInterval(timer)
+      stop()
       // Timeout — let the user in anyway (tracks fetch will show its own error)
       if (!cancelled) setReady(true)
     })()
 
-    return () => { cancelled = true }
+    return () => { cancelled = true; stop() }
   }, [])
 
   return { ready, waiting, elapsed }
@@ -151,7 +153,7 @@ export default function App() {
 
   return (
     <>
-    {booting && <Splash exiting={splashExiting} serverWaking={serverWaking} elapsed={elapsed} />}
+    {booting && <Splash exiting={splashExiting} ready={backendReady} serverWaking={serverWaking} elapsed={elapsed} />}
     <div className="app-layout">
 
       {/* ── Left Sidebar ── */}
@@ -237,14 +239,23 @@ export default function App() {
   )
 }
 
-function Splash({ exiting, serverWaking, elapsed }) {
+// Typical Render free-tier cold start. The bar fills toward this estimate so
+// users get a sense of how long the wait is, then completes once the backend
+// actually answers the health check.
+const COLD_START_EST_MS = 38_000
+
+function Splash({ exiting, ready, serverWaking, elapsed }) {
   const elapsedSec = Math.floor((elapsed || 0) / 1000)
-  // Estimate ~40s typical cold-start; cap visual progress at 92%
-  const progress = Math.min(92, Math.round(((elapsed || 0) / 45000) * 100))
+  // Determinate progress: creep toward the estimate (cap 94% so it never looks
+  // "done" before the server is), floor at 6% so there's always a visible bar.
+  // Snaps to 100% the moment the backend responds.
+  const progress = ready
+    ? 100
+    : Math.min(94, Math.max(6, Math.round(((elapsed || 0) / COLD_START_EST_MS) * 100)))
 
   return (
     <div className={`splash${exiting ? ' exiting' : ''}`}>
-      <div className="splash-mark" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22 }}>
+      <div className="splash-mark" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 26 }}>
         <p className="eyebrow" style={{ margin: 0, color: 'var(--ink-4)' }}>Audio Intelligence</p>
         <h1 className="font-brand" style={{
           margin: 0,
@@ -256,36 +267,53 @@ function Splash({ exiting, serverWaking, elapsed }) {
         }}>
           Sound<span style={{ color: 'var(--ink-4)' }}>Reverse</span>
         </h1>
-        <BootSpinner />
 
-        {/* Cold-start messaging — only appears after first health ping fails */}
-        {serverWaking && (
-          <div className="cold-start-notice anim-fade" style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-            marginTop: 8, maxWidth: 320,
-          }}>
-            {/* Progress track */}
-            <div style={{
-              width: 200, height: 3, borderRadius: 'var(--r-pill)',
+        {/* ── Loading bar — primary boot indicator (replaces the spinner) ── */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+          marginTop: 6, width: 280, maxWidth: '72vw',
+        }}>
+          <div
+            role="progressbar"
+            aria-label="Loading SoundReverse"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            style={{
+              width: '100%', height: 6, borderRadius: 'var(--r-pill)',
               background: 'var(--border)', overflow: 'hidden', position: 'relative',
-            }}>
+            }}
+          >
+            {/* Determinate fill — scaleX is GPU-cheap and animates smoothly */}
+            <div style={{
+              position: 'absolute', inset: 0, transformOrigin: 'left',
+              transform: `scaleX(${progress / 100})`,
+              background: 'var(--text-1)', borderRadius: 'var(--r-pill)',
+              transition: 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            }} />
+            {/* Shimmer sweep — keeps the bar alive while we wait */}
+            {!ready && (
               <div style={{
-                position: 'absolute', top: 0, left: 0, height: '100%',
-                width: `${progress}%`, borderRadius: 'var(--r-pill)',
-                background: 'var(--text-1)',
-                transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+                position: 'absolute', top: 0, bottom: 0, width: '38%',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
+                animation: 'indeterminate 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite',
               }} />
-            </div>
+            )}
+          </div>
 
-            <p style={{
-              margin: 0, fontSize: 13.5, fontWeight: 500,
-              color: 'var(--ink-3)', lineHeight: 1.5, textAlign: 'center',
-            }}>
-              Server is waking up…
-            </p>
-            <p style={{
+          {/* Status line under the bar */}
+          <p style={{
+            margin: 0, fontSize: 13.5, fontWeight: 500,
+            color: 'var(--ink-3)', lineHeight: 1.5, textAlign: 'center',
+          }}>
+            {ready ? 'Ready' : serverWaking ? 'Server is waking up…' : 'Connecting…'}
+          </p>
+
+          {/* Cold-start detail — only after the first health ping fails */}
+          {serverWaking && !ready && (
+            <p className="anim-fade" style={{
               margin: 0, fontSize: 12, color: 'var(--ink-4)',
-              lineHeight: 1.6, textAlign: 'center',
+              lineHeight: 1.6, textAlign: 'center', maxWidth: 300,
             }}>
               {elapsedSec < 10
                 ? 'This free-tier server sleeps when idle — it\'ll be ready in ~30 seconds.'
@@ -294,26 +322,10 @@ function Splash({ exiting, serverWaking, elapsed }) {
                   : `Still spinning up — hang tight (${elapsedSec}s)`
               }
             </p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
-  )
-}
-
-function BootSpinner() {
-  return (
-    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style={{ marginTop: 4 }}>
-      <circle cx="15" cy="15" r="12" stroke="var(--sage-border)" strokeWidth="2.5" />
-      <circle
-        cx="15" cy="15" r="12"
-        stroke="var(--sage)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeDasharray="20 56"
-        style={{ animation: 'spin-slow 0.85s linear infinite', transformOrigin: '15px 15px' }}
-      />
-    </svg>
   )
 }
 
