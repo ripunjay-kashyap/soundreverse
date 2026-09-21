@@ -315,7 +315,7 @@ Edit `.env` with your credentials:
 | `LANGSMITH_PROJECT` | ✅ Always | Project name (default: `soundreverse-v1`) |
 | `LANGCHAIN_TRACING_V2` | ✅ Always | Set to `true` |
 | `SUPABASE_URL` | ✅ Always | Supabase project URL |
-| `SUPABASE_ANON_KEY` | ✅ Always | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ Always | Supabase service_role key (secret; bypasses RLS on backend) |
 | `SONIC_MCP_URL` | ⚡ Upload path only | Modal MCP endpoint — demo tracks work without it |
 
 ```bash

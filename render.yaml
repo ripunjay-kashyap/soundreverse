@@ -17,7 +17,7 @@ services:
         value: "https://api.smith.langchain.com"
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: SONIC_MCP_URL
         sync: false

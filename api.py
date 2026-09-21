@@ -247,7 +247,7 @@ def _create_job_row(job_id: str, user_input: str | None, stress_test: bool) -> N
         print(
             "[Job store] Insert failed. Check that the Supabase project is running "
             "(free-tier projects auto-pause when idle) and that SUPABASE_URL / "
-            "SUPABASE_ANON_KEY are correct."
+            "SUPABASE_SERVICE_ROLE_KEY are correct."
         )
         raise HTTPException(
             status_code=503,

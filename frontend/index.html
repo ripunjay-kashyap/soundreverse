@@ -4,21 +4,32 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SoundReverse</title>
+    <title>SoundReverse — Your sound, understood</title>
+    <meta
+      name="description"
+      content="Turn a track into an actionable session blueprint. Explore signal measurements, producer settings, and musician insights with SoundReverse."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;800&display=swap"
+      rel="stylesheet"
+    />
     <script>
       // Resolve the theme before first paint so the page never flashes the wrong one.
       (function () {
         try {
-          var saved = localStorage.getItem('sr-theme')
-          var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          document.documentElement.setAttribute('data-theme', theme)
+          var saved = localStorage.getItem("sr-theme");
+          var theme =
+            (saved === "light" || saved === "dark" ? saved : null) ||
+            (window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light");
+          document.documentElement.setAttribute("data-theme", theme);
         } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'light')
+          document.documentElement.setAttribute("data-theme", "light");
         }
-      })()
+      })();
     </script>
   </head>
   <body>
