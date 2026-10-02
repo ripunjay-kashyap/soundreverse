@@ -27,6 +27,7 @@ function useBackendReady() {
   useEffect(() => {
     let cancelled = false;
     const t0 = Date.now();
+    const wakeTimer = setTimeout(() => setWaiting(true), 5000);
 
     async function ping() {
       try {
@@ -35,10 +36,13 @@ function useBackendReady() {
           // Validate response is actually our API (not an SPA fallback serving HTML)
           const body = await res.json();
           if (body?.status !== "ok") return false;
-          // Preserve existing readiness timing while the workspace stays visible.
+          // Keep the loading screen steady for a fast, warm-server response.
           const remaining = MIN_CONNECTION_MS - (Date.now() - t0);
           if (remaining > 0) await new Promise((r) => setTimeout(r, remaining));
-          if (!cancelled) setReady(true);
+          if (!cancelled) {
+            clearTimeout(wakeTimer);
+            setReady(true);
+          }
           return true;
         }
       } catch {
@@ -71,6 +75,7 @@ function useBackendReady() {
 
     return () => {
       cancelled = true;
+      clearTimeout(wakeTimer);
     };
   }, []);
 
@@ -137,6 +142,9 @@ function resolveOutputs(outputs) {
 
 export default function App() {
   const [tracks, setTracks] = useState([]);
+  const [tracksLoading, setTracksLoading] = useState(true);
+  const [tracksError, setTracksError] = useState(null);
+  const [tracksAttempt, setTracksAttempt] = useState(0);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [selectedDemo, setSelectedDemo] = useState("");
   const [result, setResult] = useState(null);
@@ -156,12 +164,27 @@ export default function App() {
   // Fetch tracks once the existing backend readiness check finishes.
   useEffect(() => {
     if (!backendReady) return;
-    // Fetch tracks now that backend is alive
-    fetch(`${API_BASE}/tracks`)
-      .then((r) => r.json())
-      .then((data) => setTracks(data))
-      .catch(() => setError("Failed to load tracks"));
-  }, [backendReady]);
+    const controller = new AbortController();
+    async function loadTracks() {
+      try {
+        const response = await fetch(`${API_BASE}/tracks`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Failed to load tracks");
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error("Invalid track catalog");
+        if (!controller.signal.aborted) setTracks(data);
+      } catch {
+        if (!controller.signal.aborted) {
+          setTracksError("The demo library couldn’t load. Please try again.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setTracksLoading(false);
+      }
+    }
+    loadTracks();
+    return () => controller.abort();
+  }, [backendReady, tracksAttempt]);
 
   // Shared polling loop: resolves with job result or rejects with an error message.
   // A poll that fails at the network level is retried a few times — the backend
@@ -239,6 +262,78 @@ export default function App() {
   const selectedLabel = uploadedFile
     ? uploadedFile.name
     : tracks.find((t) => t.track_id === selectedDemo)?.label || "";
+
+  if (tracksLoading || tracksError) {
+    return (
+      <main className="startup-screen" aria-labelledby="startup-title">
+        <div className="startup-theme">
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
+        <div className="startup-card">
+          <span className="startup-mark" aria-hidden="true">
+            <WaveIcon size={36} />
+          </span>
+          <p className="eyebrow">SOUNDREVERSE · THE LISTENING ROOM</p>
+          <div role="status" aria-live="polite" aria-atomic="true">
+            <h1 id="startup-title">
+              {tracksError
+                ? "The studio couldn’t connect."
+                : backendReady
+                  ? "Preparing your demo library."
+                  : serverWaking
+                    ? "Waking up the studio."
+                    : "Getting the studio ready."}
+            </h1>
+            <p className="startup-description">
+              {tracksError
+                ? tracksError
+                : !backendReady && serverWaking
+                  ? "The server is starting up. This can take about a minute on your first visit. We’ll open your workspace automatically."
+                  : "Just a moment while we connect and load your demo tracks. Your workspace will open automatically."}
+            </p>
+          </div>
+          {tracksError ? (
+            <button
+              type="button"
+              className="btn startup-retry"
+              onClick={() => {
+                setTracksError(null);
+                setTracksLoading(true);
+                setTracksAttempt((attempt) => attempt + 1);
+              }}
+            >
+              Try again
+            </button>
+          ) : (
+            <>
+              <div className="startup-progress" aria-hidden="true">
+                <span />
+              </div>
+              <div className="startup-steps">
+                <span className={backendReady ? "is-complete" : ""}>
+                  {backendReady ? (
+                    <Icon name="check" size={15} />
+                  ) : (
+                    <span className="library-spinner" aria-hidden="true" />
+                  )}
+                  Connect to studio
+                </span>
+                <span className={backendReady ? "is-current" : ""}>
+                  {backendReady ? (
+                    <span className="library-spinner" aria-hidden="true" />
+                  ) : (
+                    <span className="startup-step-dot" aria-hidden="true" />
+                  )}
+                  Load demo tracks
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+        <p className="startup-footnote">From listening to understanding.</p>
+      </main>
+    );
+  }
 
   return (
     <>

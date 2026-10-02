@@ -532,6 +532,119 @@ h3 {
   margin: 0;
   font-size: 13px;
 }
+.startup-screen {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 88px 24px 40px;
+  position: relative;
+  background: radial-gradient(ellipse at 50% 40%, var(--blue-soft), transparent 65%);
+}
+.startup-theme {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+}
+.startup-card {
+  width: 100%;
+  max-width: 500px;
+  text-align: center;
+}
+.startup-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 28px;
+  border-radius: 22px;
+  color: var(--blue);
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  box-shadow: var(--shadow-sm);
+}
+.startup-card h1 {
+  margin: 16px 0;
+  font-size: clamp(28px, 5vw, 38px);
+  line-height: 1.2;
+  letter-spacing: -1.2px;
+}
+.startup-description {
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 0 auto;
+  max-width: 410px;
+}
+.startup-progress {
+  height: 3px;
+  max-width: 320px;
+  margin: 32px auto 24px;
+  background: var(--border-mid);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.startup-progress span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--blue);
+  border-radius: inherit;
+  animation: startup-sweep 1.8s ease-in-out infinite alternate;
+}
+@keyframes startup-sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(150%); }
+}
+.startup-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px 24px;
+  color: var(--text-4);
+  font-size: 12px;
+}
+.startup-steps > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.startup-steps .library-spinner {
+  margin: 0;
+}
+.startup-steps .is-complete {
+  color: var(--green-text);
+}
+.startup-steps .is-current {
+  color: var(--text-2);
+}
+.startup-step-dot {
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--border-mid);
+  border-radius: 50%;
+}
+.startup-retry {
+  width: auto;
+  margin-top: 28px;
+  min-width: 150px;
+}
+.startup-footnote {
+  margin: 56px 0 0;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.library-spinner {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  border: 2px solid var(--border-mid);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
 .upload-control .dropzone {
   display: flex;
   flex-direction: column;
